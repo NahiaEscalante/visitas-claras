@@ -81,9 +81,22 @@ export async function aiAutocompletarVisita(
   if (!isApiModeEnabled()) {
     try {
       const result = await mockAIAutocompletar(input);
+      console.log('Resultado del mock antes de validar:', result);
+      
       // Validar con Zod
-      const validated = AIAutocompleteResponseSchema.parse(result);
-      return validated;
+      try {
+        const validated = AIAutocompleteResponseSchema.parse(result);
+        console.log('Validación exitosa:', validated);
+        return validated;
+      } catch (validationError) {
+        console.error('Error de validación Zod:', validationError);
+        // Si hay error de validación, intentar corregir los datos
+        if (validationError instanceof Error && 'issues' in validationError) {
+          const zodError = validationError as any;
+          console.error('Detalles del error de validación:', JSON.stringify(zodError.issues, null, 2));
+        }
+        throw new Error(`Error de validación: ${validationError instanceof Error ? validationError.message : 'Formato de datos inválido'}`);
+      }
     } catch (error) {
       console.error('Error en mockAIAutocompletar:', error);
       if (error instanceof Error) {

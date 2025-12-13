@@ -80,6 +80,20 @@ function simulateAIAnalysis(
     throw new Error('Profesor no encontrado');
   }
 
+  // Función helper para formatear hora en formato HH:mm
+  const formatHora = (horaStr: string): string => {
+    const [horas, minutos] = horaStr.split(':');
+    const h = parseInt(horas, 10);
+    const m = minutos || '00';
+    return `${h.toString().padStart(2, '0')}:${m.padStart(2, '0')}`;
+  };
+
+  // Calcular hora fin (1 hora después de inicio, máximo 23:59)
+  const [horaInicio, minutoInicio] = hora.split(':').map(Number);
+  let horaFinNum = horaInicio + 1;
+  if (horaFinNum > 23) horaFinNum = 23;
+  const horaFinStr = `${horaFinNum.toString().padStart(2, '0')}:${minutoInicio.toString().padStart(2, '0')}`;
+
   // Simular datos extraídos del documento
   const datosDocente: DatosDocente = {
     nombreCompleto: `${profesor.nombre} ${profesor.apellido}`,
@@ -92,8 +106,8 @@ function simulateAIAnalysis(
     seccion: profesor.salon.split(' ')[1] || 'A',
     areasCurriculares: ['Comunicación', 'Matemáticas'][Math.floor(Math.random() * 2)],
     fechaVisita: fecha,
-    horaInicio: hora,
-    horaFin: `${parseInt(hora.split(':')[0]) + 1}:${hora.split(':')[1]}`,
+    horaInicio: formatHora(hora), // Asegurar formato HH:mm
+    horaFin: horaFinStr, // Asegurar formato HH:mm
   };
 
   // Simular rúbricas con niveles aleatorios (tendencia hacia niveles 2-3)
@@ -214,7 +228,17 @@ export async function mockAIAutocompletar(
     console.warn('Archivo no encontrado en memoria, pero continuando con simulación');
   }
 
-  return simulateAIAnalysis(input.profesorId, input.fecha, input.hora);
+  // Asegurar que la hora tenga formato correcto
+  const horaFormateada = input.hora.includes(':') 
+    ? input.hora 
+    : `${input.hora.padStart(2, '0')}:00`;
+  
+  const resultado = simulateAIAnalysis(input.profesorId, input.fecha, horaFormateada);
+  
+  // Validar que todos los campos estén en el formato correcto
+  console.log('Resultado de simulateAIAnalysis:', resultado);
+  
+  return resultado;
 }
 
 /**
