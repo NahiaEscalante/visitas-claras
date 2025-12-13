@@ -22,10 +22,11 @@ function delay(min: number = 300, max: number = 1500): Promise<void> {
 }
 
 /**
- * Simula un error aleatorio (5% de probabilidad)
+ * Simula un error aleatorio (desactivado para demostraciones)
  */
 function shouldSimulateError(): boolean {
-  return Math.random() < 0.05; // 5% de probabilidad
+  return false; // Desactivado para que funcione correctamente en demostraciones
+  // return Math.random() < 0.05; // 5% de probabilidad (activar solo para testing)
 }
 
 /**
@@ -189,7 +190,7 @@ export async function mockUploadArchivo(
     url: fileUrl,
     tipo: 'observacion',
     tamaño: file.size,
-    mimeType: file.type || 'application/pdf',
+    mimeType: file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
     uploadedAt: new Date().toISOString(),
   };
 }
@@ -208,7 +209,9 @@ export async function mockAIAutocompletar(
 
   // Verificar que el archivo existe
   if (!mockArchivos.has(input.archivoId)) {
-    throw new Error('Archivo no encontrado');
+    // Si el archivo no está en memoria, puede que se haya perdido al recargar
+    // En ese caso, simular el análisis de todas formas
+    console.warn('Archivo no encontrado en memoria, pero continuando con simulación');
   }
 
   return simulateAIAnalysis(input.profesorId, input.fecha, input.hora);

@@ -69,12 +69,19 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
 
   // Mutación para subir archivo
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => uploadArchivoObservacion(file, profesor.id),
+    mutationFn: (file: File) => {
+      console.log('Subiendo archivo:', file.name, file.size);
+      return uploadArchivoObservacion(file, profesor.id);
+    },
     onSuccess: (data) => {
+      console.log('Archivo subido exitosamente:', data.id);
       setArchivoId(data.id);
+      sonnerToast.dismiss('upload');
       sonnerToast.success('Archivo subido exitosamente');
     },
     onError: (error: Error) => {
+      console.error('Error al subir archivo:', error);
+      sonnerToast.dismiss('upload');
       sonnerToast.error('Error al subir archivo', {
         description: error.message,
       });
@@ -85,6 +92,7 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
   const aiMutation = useMutation({
     mutationFn: (fileId: string) => {
       if (!fileId) throw new Error('No hay archivo subido');
+      console.log('Iniciando análisis IA con archivoId:', fileId);
       return aiAutocompletarVisita({
         profesorId: profesor.id,
         fecha: datosDocente.fechaVisita,
@@ -93,6 +101,7 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
       });
     },
     onSuccess: (data) => {
+      console.log('Análisis IA completado:', data);
       // Autocompletar formulario con datos de IA
       setDatosDocente(data.datosDocente);
       setRubricas(data.rubricas);
@@ -113,11 +122,14 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
       setCamposBajaConfianza(bajaConfianza);
       
       setMostrarFormulario(true);
+      sonnerToast.dismiss('ai');
       sonnerToast.success('Análisis completado', {
         description: 'Revisa y ajusta los datos antes de guardar.',
       });
     },
     onError: (error: Error) => {
+      console.error('Error al analizar con IA:', error);
+      sonnerToast.dismiss('ai');
       sonnerToast.error('Error al analizar con IA', {
         description: error.message,
       });
@@ -198,17 +210,30 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
   };
 
   const handleSubirYAnalizar = async () => {
-    if (!archivoSubido) return;
+    if (!archivoSubido) {
+      toast({
+        title: 'Error',
+        description: 'Por favor, selecciona un archivo primero.',
+        variant: 'destructive',
+      });
+      return;
+    }
     
     try {
       // Primero subir archivo
+      sonnerToast.loading('Subiendo archivo...', { id: 'upload' });
       const uploadResult = await uploadMutation.mutateAsync(archivoSubido);
       const fileId = uploadResult.id;
       setArchivoId(fileId);
       
+      sonnerToast.success('Archivo subido exitosamente', { id: 'upload' });
+      
       // Luego analizar con IA usando el ID del archivo subido
+      sonnerToast.loading('Analizando documento con IA...', { id: 'ai' });
       await aiMutation.mutateAsync(fileId);
     } catch (error) {
+      sonnerToast.dismiss('upload');
+      sonnerToast.dismiss('ai');
       // Error ya manejado en las mutaciones
       console.error('Error en subida/análisis:', error);
     }

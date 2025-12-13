@@ -34,9 +34,18 @@ export async function uploadArchivoObservacion(
 ): Promise<UploadFileResponse> {
   // Si no hay API, usar mock
   if (!isApiModeEnabled()) {
-    const result = await mockUploadArchivo(file, profesorId);
-    // Validar con Zod
-    return UploadFileResponseSchema.parse(result);
+    try {
+      const result = await mockUploadArchivo(file, profesorId);
+      // Validar con Zod
+      const validated = UploadFileResponseSchema.parse(result);
+      return validated;
+    } catch (error) {
+      console.error('Error en mockUploadArchivo:', error);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Error al subir archivo');
+    }
   }
 
   // API real
@@ -70,9 +79,18 @@ export async function aiAutocompletarVisita(
 ): Promise<AIAutocompleteResponse> {
   // Si no hay API, usar mock
   if (!isApiModeEnabled()) {
-    const result = await mockAIAutocompletar(input);
-    // Validar con Zod
-    return AIAutocompleteResponseSchema.parse(result);
+    try {
+      const result = await mockAIAutocompletar(input);
+      // Validar con Zod
+      const validated = AIAutocompleteResponseSchema.parse(result);
+      return validated;
+    } catch (error) {
+      console.error('Error en mockAIAutocompletar:', error);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Error al procesar autocompletado con IA');
+    }
   }
 
   // API real
