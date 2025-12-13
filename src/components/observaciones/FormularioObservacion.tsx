@@ -83,13 +83,13 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
 
   // Mutación para autocompletar con IA
   const aiMutation = useMutation({
-    mutationFn: () => {
-      if (!archivoId) throw new Error('No hay archivo subido');
+    mutationFn: (fileId: string) => {
+      if (!fileId) throw new Error('No hay archivo subido');
       return aiAutocompletarVisita({
         profesorId: profesor.id,
         fecha: datosDocente.fechaVisita,
         hora: datosDocente.horaInicio,
-        archivoId,
+        archivoId: fileId,
       });
     },
     onSuccess: (data) => {
@@ -203,12 +203,14 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
     try {
       // Primero subir archivo
       const uploadResult = await uploadMutation.mutateAsync(archivoSubido);
-      setArchivoId(uploadResult.id);
+      const fileId = uploadResult.id;
+      setArchivoId(fileId);
       
-      // Luego analizar con IA
-      await aiMutation.mutateAsync();
+      // Luego analizar con IA usando el ID del archivo subido
+      await aiMutation.mutateAsync(fileId);
     } catch (error) {
       // Error ya manejado en las mutaciones
+      console.error('Error en subida/análisis:', error);
     }
   };
 
@@ -251,33 +253,12 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
       ...(archivoId && { archivoId }),
     };
 
-    // Si API está habilitada, usar API; si no, modo mock
-    if (isApiModeEnabled()) {
-      try {
-        await crearVisitaMutation.mutateAsync(payload);
-      } catch (error) {
-        // Error ya manejado en la mutación
-        return;
-      }
-    } else {
-      // Modo mock (comportamiento original)
-      const nuevaVisita: Visita = {
-        id: `v-${Date.now()}`,
-        profesorId: profesor.id,
-        fecha: datosDocente.fechaVisita,
-        hora: datosDocente.horaInicio,
-        nivelLogroTotal: nivelTotal,
-        rubricas,
-        datosDocente,
-      };
-
-      onGuardar(nuevaVisita);
-      resetFormulario();
-
-      toast({
-        title: 'Visita guardada',
-        description: 'La observación ha sido registrada exitosamente en el historial.',
-      });
+    // Siempre usar API (mock o real)
+    try {
+      await crearVisitaMutation.mutateAsync(payload);
+    } catch (error) {
+      // Error ya manejado en la mutación
+      return;
     }
   };
 
@@ -288,7 +269,8 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
     }));
   };
 
-  const isApiMode = isApiModeEnabled();
+  // Siempre habilitar modo IA (usa mock API)
+  const isApiMode = true; // Siempre activo porque usamos mock API
   const isLoading = uploadMutation.isPending || aiMutation.isPending || crearVisitaMutation.isPending;
 
   return (

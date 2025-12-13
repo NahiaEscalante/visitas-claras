@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppProvider } from "./context/AppContext";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 import Index from "./pages/Index";
 import Observaciones from "./pages/Observaciones";
 import Calendario from "./pages/Calendario";
@@ -22,10 +23,38 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/observaciones" element={<Observaciones />} />
-            <Route path="/calendario" element={<Calendario />} />
-            <Route path="/historial" element={<Historial />} />
-            <Route path="/ayuda" element={<Ayuda />} />
+            <Route 
+              path="/observaciones" 
+              element={
+                <ProtectedRoute>
+                  <Observaciones />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/calendario" 
+              element={
+                <ProtectedRoute>
+                  <Calendario />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/historial" 
+              element={
+                <ProtectedRoute>
+                  <Historial />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/ayuda" 
+              element={
+                <ProtectedRoute>
+                  <Ayuda />
+                </ProtectedRoute>
+              } 
+            />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

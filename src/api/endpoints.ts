@@ -1,4 +1,5 @@
 import { apiRequest } from './http';
+import { isApiModeEnabled } from './config';
 import {
   UploadFileResponse,
   AIAutocompleteRequest,
@@ -12,9 +13,15 @@ import {
   CreateVisitaPayloadSchema,
   CreateVisitaResponseSchema,
 } from './schemas';
+import {
+  mockUploadArchivo,
+  mockAIAutocompletar,
+  mockCrearVisita,
+} from '@/services/mockApi';
 
 /**
  * Endpoints de la API
+ * Si no hay API configurada, usa el sistema mock simulado
  * Todas las funciones validan la respuesta con Zod antes de retornar
  */
 
@@ -25,6 +32,14 @@ export async function uploadArchivoObservacion(
   file: File,
   profesorId?: string
 ): Promise<UploadFileResponse> {
+  // Si no hay API, usar mock
+  if (!isApiModeEnabled()) {
+    const result = await mockUploadArchivo(file, profesorId);
+    // Validar con Zod
+    return UploadFileResponseSchema.parse(result);
+  }
+
+  // API real
   const formData = new FormData();
   formData.append('file', file);
   formData.append('tipo', 'observacion');
@@ -53,6 +68,14 @@ export async function uploadArchivoObservacion(
 export async function aiAutocompletarVisita(
   input: AIAutocompleteRequest
 ): Promise<AIAutocompleteResponse> {
+  // Si no hay API, usar mock
+  if (!isApiModeEnabled()) {
+    const result = await mockAIAutocompletar(input);
+    // Validar con Zod
+    return AIAutocompleteResponseSchema.parse(result);
+  }
+
+  // API real
   const response = await apiRequest<AIAutocompleteResponse>(
     '/visitas/ai/autocompletar',
     {
@@ -79,6 +102,14 @@ export async function crearVisita(
   // Validar payload antes de enviar
   const validatedPayload = CreateVisitaPayloadSchema.parse(payload);
 
+  // Si no hay API, usar mock
+  if (!isApiModeEnabled()) {
+    const result = await mockCrearVisita(validatedPayload);
+    // Validar con Zod
+    return CreateVisitaResponseSchema.parse(result);
+  }
+
+  // API real
   const response = await apiRequest<CreateVisitaResponse>('/visitas', {
     method: 'POST',
     body: validatedPayload,

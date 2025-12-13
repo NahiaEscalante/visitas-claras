@@ -1,20 +1,48 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { ClipboardList, Mail, Lock, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { login } from '@/services/auth';
+import { toast } from 'sonner';
 
 export default function Login() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Demo: just redirect to dashboard
-    navigate('/observaciones');
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const response = await login(email, password, rememberMe);
+
+      if (response.success && response.data) {
+        toast.success('¡Bienvenido!', {
+          description: `Hola ${response.data.user.nombre} ${response.data.user.apellido}`,
+        });
+        navigate('/observaciones');
+      } else {
+        setError(response.error?.message || 'Error al iniciar sesión');
+        toast.error('Error al iniciar sesión', {
+          description: response.error?.message || 'Credenciales incorrectas',
+        });
+      }
+    } catch (err) {
+      setError('Error inesperado. Por favor, intenta nuevamente.');
+      toast.error('Error inesperado', {
+        description: 'No se pudo conectar con el servidor',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -86,9 +114,21 @@ export default function Login() {
                 </div>
               </div>
 
+              {error && (
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2 text-sm text-destructive">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{error}</span>
+                </div>
+              )}
+
               <div className="flex items-center justify-between text-sm">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="rounded border-input" />
+                  <input 
+                    type="checkbox" 
+                    className="rounded border-input" 
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                  />
                   <span className="text-muted-foreground">Recordarme</span>
                 </label>
                 <a href="#" className="text-primary hover:underline">
@@ -98,10 +138,24 @@ export default function Login() {
 
               <Button
                 type="submit"
+                disabled={isLoading}
                 className="w-full h-12 btn-primary text-base font-medium"
               >
-                Ingresar
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Iniciando sesión...
+                  </>
+                ) : (
+                  'Ingresar'
+                )}
               </Button>
+
+              <div className="text-xs text-muted-foreground text-center pt-2 border-t">
+                <p className="mb-1">Credenciales de prueba:</p>
+                <p>director@ejemplo.edu.pe / director123</p>
+                <p>supervisor@ejemplo.edu.pe / supervisor123</p>
+              </div>
             </form>
           </div>
 

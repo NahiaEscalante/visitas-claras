@@ -1,4 +1,5 @@
 import { getApiUrl, isApiModeEnabled } from './config';
+import { isAuthenticated } from '@/services/auth';
 
 export interface ApiError {
   code: string;
@@ -22,16 +23,37 @@ type RequestOptions = {
 
 /**
  * Wrapper HTTP centralizado para llamadas a la API
- * Maneja errores según el formato documentado en ENDPOINTS_BACKEND.md
+ * Si no hay API configurada, usa el sistema mock simulado
  */
 export async function apiRequest<T>(
   path: string,
   options: RequestOptions = {}
 ): Promise<ApiResponse<T>> {
+  // Si no hay API configurada, usar modo mock
   if (!isApiModeEnabled()) {
-    throw new Error('API no configurada. Modo demo/mock activo.');
+    // Verificar autenticación para rutas protegidas
+    if (!isAuthenticated() && !path.includes('/auth/')) {
+      return {
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Debes iniciar sesión para acceder a este recurso',
+        },
+      };
+    }
+
+    // En modo mock, las llamadas se manejan en endpoints.ts
+    // Este código solo se ejecuta si hay un error en el mock
+    return {
+      success: false,
+      error: {
+        code: 'MOCK_MODE',
+        message: 'Modo demo activo. Esta funcionalidad está simulada.',
+      },
+    };
   }
 
+  // Código original para API real
   const {
     method = 'GET',
     headers = {},
