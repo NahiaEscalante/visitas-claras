@@ -40,12 +40,13 @@ export function Navbar() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-sky-400 flex items-center justify-center">
-              <ClipboardList className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <span className="font-semibold text-lg text-foreground">
-              ObservaDoc
-            </span>
+            <a href="#inicio" className="flex items-center gap-2">
+          <img
+            src="/logo-criteria.svg"
+            alt="Nexo logo"
+            className="h-32 w-auto object-contain"
+          />
+        </a>
           </div>
 
           {/* Navigation */}
