@@ -1,16 +1,18 @@
 /**
- * Servicio de autenticación simulado
- * Simula un sistema de autenticación completo con JWT y sesiones
+ * Servicio de autenticación. Usa la API real /v1/auth.
  */
 
-import { User, verifyCredentials, findUserById } from '@/data/mockUsers';
+import type { User } from '@/types';
+import { loginApi, logoutApi, meApi } from '@/api/auth';
+
+const AUTH_USER_KEY = 'auth_user';
 
 export interface AuthResponse {
   success: boolean;
   data?: {
     token: string;
     refreshToken: string;
-    user: Omit<User, 'password'>;
+    user: User;
     expiresIn: number;
   };
   error?: {
@@ -19,38 +21,11 @@ export interface AuthResponse {
   };
 }
 
-/**
- * Simula un delay de red
- */
-function delay(ms: number = 500): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
- * Genera un token JWT simulado
- */
-function generateMockToken(userId: string, expiresIn: number = 3600): string {
-  const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const payload = btoa(JSON.stringify({
-    userId,
-    exp: Math.floor(Date.now() / 1000) + expiresIn,
-    iat: Math.floor(Date.now() / 1000),
-  }));
-  return `${header}.${payload}.mock-signature`;
-}
-
-/**
- * Login simulado
- */
 export async function login(
   email: string,
   password: string,
   rememberMe: boolean = false
 ): Promise<AuthResponse> {
-  // Simular delay de red
-  await delay(800);
-
-  // Validar email
   if (!email || !email.includes('@')) {
     return {
       success: false,
@@ -60,145 +35,95 @@ export async function login(
       },
     };
   }
-
-  // Validar password
-  if (!password || password.length < 6) {
+  if (!password || password.length < 8) {
     return {
       success: false,
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'La contraseña debe tener al menos 6 caracteres',
+        message: 'La contraseña debe tener al menos 8 caracteres',
       },
     };
   }
 
-  // Verificar credenciales
-  const user = verifyCredentials(email, password);
-  
-  if (!user) {
+  const response = await loginApi({ email, password, rememberMe });
+
+  if (!response.success || !response.data) {
     return {
       success: false,
       error: {
-        code: 'INVALID_CREDENTIALS',
-        message: 'Email o contraseña incorrectos',
+        code: response.error?.code || 'INVALID_CREDENTIALS',
+        message: response.error?.message || 'Email o contraseña incorrectos',
       },
     };
   }
 
-  // Generar tokens
-  const expiresIn = rememberMe ? 86400 * 7 : 3600; // 7 días o 1 hora
-  const token = generateMockToken(user.id, expiresIn);
-  const refreshToken = generateMockToken(user.id, expiresIn * 2);
-
-  // Guardar token en localStorage
+  const { token, refreshToken, user, expiresIn } = response.data;
   localStorage.setItem('auth_token', token);
   localStorage.setItem('refresh_token', refreshToken);
   localStorage.setItem('user_id', user.id);
+  try {
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+  } catch {
+    // ignore quota
+  }
 
-  // Retornar respuesta
-  const { password: _, ...userWithoutPassword } = user;
-  
   return {
     success: true,
     data: {
       token,
       refreshToken,
-      user: userWithoutPassword,
+      user,
       expiresIn,
     },
   };
 }
 
-/**
- * Logout simulado
- */
 export async function logout(refreshToken?: string): Promise<{ success: boolean; message: string }> {
-  await delay(300);
-
-  // Limpiar localStorage
+  const token = refreshToken ?? localStorage.getItem('refresh_token');
+  if (token) {
+    await logoutApi(token);
+  }
   localStorage.removeItem('auth_token');
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('user_id');
-
+  localStorage.removeItem(AUTH_USER_KEY);
   return {
     success: true,
     message: 'Sesión cerrada exitosamente',
   };
 }
 
-/**
- * Obtener usuario actual desde el token
- */
-export function getCurrentUser(): Omit<User, 'password'> | null {
-  const userId = localStorage.getItem('user_id');
-  if (!userId) return null;
-
-  const user = findUserById(userId);
-  if (!user) return null;
-
-  const { password: _, ...userWithoutPassword } = user;
-  return userWithoutPassword;
+export function getCurrentUser(): User | null {
+  try {
+    const stored = localStorage.getItem(AUTH_USER_KEY);
+    if (stored) {
+      return JSON.parse(stored) as User;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 /**
- * Verificar si hay una sesión activa
+ * Obtener usuario actual; si no está en localStorage, llama a GET /v1/auth/me.
  */
+export async function fetchCurrentUser(): Promise<User | null> {
+  const response = await meApi();
+  if (!response.success || !response.data) return null;
+  try {
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(response.data));
+    localStorage.setItem('user_id', response.data.id);
+  } catch {
+    // ignore
+  }
+  return response.data;
+}
+
 export function isAuthenticated(): boolean {
-  const token = localStorage.getItem('auth_token');
-  const userId = localStorage.getItem('user_id');
-  return !!(token && userId);
+  return !!localStorage.getItem('auth_token');
 }
 
-/**
- * Obtener token actual
- */
 export function getToken(): string | null {
   return localStorage.getItem('auth_token');
 }
-
-/**
- * Refresh token simulado
- */
-export async function refreshAccessToken(): Promise<AuthResponse> {
-  await delay(400);
-
-  const refreshToken = localStorage.getItem('refresh_token');
-  const userId = localStorage.getItem('user_id');
-
-  if (!refreshToken || !userId) {
-    return {
-      success: false,
-      error: {
-        code: 'UNAUTHORIZED',
-        message: 'No hay sesión activa',
-      },
-    };
-  }
-
-  const user = findUserById(userId);
-  if (!user) {
-    return {
-      success: false,
-      error: {
-        code: 'USER_NOT_FOUND',
-        message: 'Usuario no encontrado',
-      },
-    };
-  }
-
-  const newToken = generateMockToken(user.id, 3600);
-  localStorage.setItem('auth_token', newToken);
-
-  const { password: _, ...userWithoutPassword } = user;
-
-  return {
-    success: true,
-    data: {
-      token: newToken,
-      refreshToken,
-      user: userWithoutPassword,
-      expiresIn: 3600,
-    },
-  };
-}
-

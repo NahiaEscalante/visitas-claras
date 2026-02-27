@@ -75,13 +75,17 @@ export default function Historial() {
                 <div key={visita.id} className="card-elevated p-5">
                   <div className="flex items-start gap-4">
                     {/* Photo */}
-                    {profesor && (
+                    {profesor && (profesor.foto ? (
                       <img
                         src={profesor.foto}
                         alt={`${profesor.nombre} ${profesor.apellido}`}
                         className="w-12 h-12 rounded-full object-cover ring-2 ring-border"
                       />
-                    )}
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center ring-2 ring-border text-sm font-medium text-muted-foreground">
+                        {profesor.nombre.charAt(0)}{profesor.apellido.charAt(0)}
+                      </div>
+                    ))}
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">

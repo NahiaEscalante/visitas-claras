@@ -162,11 +162,6 @@ export default function Login() {
                 )}
               </Button>
 
-              <div className="text-xs text-muted-foreground text-center pt-2 border-t">
-                <p className="mb-1">Credenciales de prueba:</p>
-                <p>director@ejemplo.edu.pe / director123</p>
-                <p>supervisor@ejemplo.edu.pe / supervisor123</p>
-              </div>
             </form>
           </div>
 

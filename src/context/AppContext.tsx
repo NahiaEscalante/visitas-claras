@@ -1,19 +1,26 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Profesor, Visita, VisitaProgramada } from '@/types';
-import { profesores as profesoresData, visitasIniciales, visitasProgramadasIniciales } from '@/data/mockData';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { Profesor, Visita, VisitaProgramada, User } from '@/types';
 import { getCurrentUser, isAuthenticated, logout as authLogout } from '@/services/auth';
-import { User } from '@/data/mockUsers';
-import { mockGetVisitas, mockGetVisitasProgramadas } from '@/services/mockApi';
+import { AUTH_LOGOUT_EVENT } from '@/api/http';
+import {
+  getProfesores,
+  getVisitas,
+  getVisitasProgramadas,
+  updateVisitaProgramada,
+} from '@/api/endpoints';
+
+const DEFAULT_LIMIT = 100;
 
 interface AppContextType {
   profesores: Profesor[];
   visitas: Visita[];
   visitasProgramadas: VisitaProgramada[];
-  currentUser: Omit<User, 'password'> | null;
+  loading: boolean;
+  currentUser: User | null;
   isAuthenticated: boolean;
   agregarVisita: (visita: Visita) => void;
   agregarVisitaProgramada: (visita: VisitaProgramada) => void;
-  confirmarVisitaProgramada: (id: string) => void;
+  confirmarVisitaProgramada: (id: string) => Promise<void>;
   getVisitasByProfesor: (profesorId: string) => Visita[];
   getProfesorById: (id: string) => Profesor | undefined;
   logout: () => Promise<void>;
@@ -23,73 +30,83 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [profesores] = useState<Profesor[]>(profesoresData);
-  const [visitas, setVisitas] = useState<Visita[]>(visitasIniciales);
-  const [visitasProgramadas, setVisitasProgramadas] = useState<VisitaProgramada[]>(visitasProgramadasIniciales);
-  const [currentUser, setCurrentUser] = useState<Omit<User, 'password'> | null>(null);
+  const [profesores, setProfesores] = useState<Profesor[]>([]);
+  const [visitas, setVisitas] = useState<Visita[]>([]);
+  const [visitasProgramadas, setVisitasProgramadas] = useState<VisitaProgramada[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Cargar usuario actual al iniciar
-  useEffect(() => {
-    const user = getCurrentUser();
-    setCurrentUser(user);
-    
-    // Sincronizar datos con mock API
-    if (user) {
-      refreshData();
+  const refreshData = useCallback(async () => {
+    if (!isAuthenticated()) return;
+    setLoading(true);
+    try {
+      const [profRes, visRes, vpRes] = await Promise.all([
+        getProfesores({ page: 1, limit: DEFAULT_LIMIT }),
+        getVisitas({ page: 1, limit: DEFAULT_LIMIT }),
+        getVisitasProgramadas({ page: 1, limit: DEFAULT_LIMIT }),
+      ]);
+      setProfesores(profRes.profesores);
+      setVisitas(visRes.visitas);
+      setVisitasProgramadas(vpRes.visitas);
+    } catch (error) {
+      console.error('Error al refrescar datos:', error);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  // Sincronizar datos desde mock API
-  const refreshData = async () => {
-    try {
-      const [visitasData, visitasProgramadasData] = await Promise.all([
-        mockGetVisitas(),
-        mockGetVisitasProgramadas(),
-      ]);
-      setVisitas(visitasData);
-      setVisitasProgramadas(visitasProgramadasData);
-    } catch (error) {
-      console.error('Error al refrescar datos:', error);
+  useEffect(() => {
+    const user = getCurrentUser();
+    setCurrentUser(user);
+    if (user) {
+      refreshData();
     }
-  };
+  }, [refreshData]);
 
-  const agregarVisita = (visita: Visita) => {
-    setVisitas(prev => [...prev, visita]);
-    // Sincronizar con mock API
-    refreshData();
-  };
+  useEffect(() => {
+    const handleLogout = () => {
+      setCurrentUser(null);
+      setProfesores([]);
+      setVisitas([]);
+      setVisitasProgramadas([]);
+    };
+    window.addEventListener(AUTH_LOGOUT_EVENT, handleLogout);
+    return () => window.removeEventListener(AUTH_LOGOUT_EVENT, handleLogout);
+  }, []);
 
-  const agregarVisitaProgramada = (visita: VisitaProgramada) => {
-    setVisitasProgramadas(prev => [...prev, visita]);
-    // Sincronizar con mock API
-    refreshData();
-  };
+  const agregarVisita = useCallback((visita: Visita) => {
+    setVisitas((prev) => [...prev, visita]);
+  }, []);
 
-  const confirmarVisitaProgramada = (id: string) => {
-    setVisitasProgramadas(prev =>
-      prev.map(v => (v.id === id ? { ...v, confirmada: true } : v))
+  const agregarVisitaProgramada = useCallback((visita: VisitaProgramada) => {
+    setVisitasProgramadas((prev) => [...prev, visita]);
+  }, []);
+
+  const confirmarVisitaProgramada = useCallback(async (id: string) => {
+    await updateVisitaProgramada(id, { confirmada: true });
+    setVisitasProgramadas((prev) =>
+      prev.map((v) => (v.id === id ? { ...v, confirmada: true } : v))
     );
-    // Sincronizar con mock API
-    refreshData();
-  };
+  }, []);
 
-  const getVisitasByProfesor = (profesorId: string) => {
-    return visitas.filter(v => v.profesorId === profesorId);
-  };
+  const getVisitasByProfesor = useCallback(
+    (profesorId: string) => visitas.filter((v) => v.profesorId === profesorId),
+    [visitas]
+  );
 
-  const getProfesorById = (id: string) => {
-    return profesores.find(p => p.id === id);
-  };
+  const getProfesorById = useCallback(
+    (id: string) => profesores.find((p) => p.id === id),
+    [profesores]
+  );
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     await authLogout();
     setCurrentUser(null);
-    // Limpiar datos al cerrar sesión
-    setVisitas(visitasIniciales);
-    setVisitasProgramadas(visitasProgramadasIniciales);
-  };
+    setProfesores([]);
+    setVisitas([]);
+    setVisitasProgramadas([]);
+  }, []);
 
-  // Actualizar usuario cuando cambia la autenticación
   useEffect(() => {
     const checkAuth = () => {
       if (isAuthenticated()) {
@@ -99,8 +116,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setCurrentUser(null);
       }
     };
-
-    // Verificar cada vez que cambia el localStorage
     const interval = setInterval(checkAuth, 1000);
     return () => clearInterval(interval);
   }, []);
@@ -111,6 +126,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         profesores,
         visitas,
         visitasProgramadas,
+        loading,
         currentUser,
         isAuthenticated: isAuthenticated(),
         agregarVisita,

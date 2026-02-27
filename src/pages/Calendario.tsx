@@ -15,9 +15,13 @@ export default function Calendario() {
   const [selectedVisita, setSelectedVisita] = useState<VisitaProgramada | null>(null);
   const [key, setKey] = useState(0);
 
-  const handleConfirmar = () => {
-    if (selectedVisita) {
-      confirmarVisitaProgramada(selectedVisita.id);
+  const handleConfirmar = async () => {
+    if (!selectedVisita) return;
+    try {
+      await confirmarVisitaProgramada(selectedVisita.id);
+      setSelectedVisita(null);
+    } catch {
+      // Error ya manejado en contexto o se puede mostrar toast
     }
   };
 

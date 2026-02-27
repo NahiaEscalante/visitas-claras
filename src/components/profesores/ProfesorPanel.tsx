@@ -29,11 +29,17 @@ export function ProfesorPanel({ profesor, onBack }: ProfesorPanelProps) {
       {/* Header with Photo */}
       <div className="card-elevated p-6">
         <div className="flex items-center gap-5">
-          <img
-            src={profesor.foto}
-            alt={`${profesor.nombre} ${profesor.apellido}`}
-            className="w-20 h-20 rounded-xl object-cover ring-4 ring-accent"
-          />
+          {profesor.foto ? (
+            <img
+              src={profesor.foto}
+              alt={`${profesor.nombre} ${profesor.apellido}`}
+              className="w-20 h-20 rounded-xl object-cover ring-4 ring-accent"
+            />
+          ) : (
+            <div className="w-20 h-20 rounded-xl bg-muted flex items-center justify-center ring-4 ring-accent text-2xl font-medium text-muted-foreground">
+              {profesor.nombre.charAt(0)}{profesor.apellido.charAt(0)}
+            </div>
+          )}
           <div>
             <h2 className="text-2xl font-bold text-foreground">
               {profesor.nombre} {profesor.apellido}

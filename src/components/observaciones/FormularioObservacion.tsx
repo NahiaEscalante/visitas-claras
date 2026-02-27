@@ -5,13 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Profesor, Visita, Rubrica, DatosDocente } from '@/types';
-import { rubricasTemplate } from '@/data/mockData';
+import { Profesor, Visita, Rubrica, DatosDocente, RubricaTemplate } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@tanstack/react-query';
 import { toast as sonnerToast } from 'sonner';
-import { isApiModeEnabled } from '@/api/config';
-import { uploadArchivoObservacion, aiAutocompletarVisita, crearVisita } from '@/api/endpoints';
+import { uploadArchivoObservacion, aiAutocompletarVisita, crearVisita, getRubricas } from '@/api/endpoints';
 import { AIAutocompleteResponse } from '@/api/types';
 import { useApp } from '@/context/AppContext';
 
@@ -58,14 +56,26 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
     horaFin: '09:00',
   });
 
-  const [rubricas, setRubricas] = useState<Rubrica[]>(
-    rubricasTemplate.map((r) => ({
-      id: r.id,
-      nombre: r.nombre,
-      nivel: null,
-      observaciones: '',
-    }))
-  );
+  const [templateRubricas, setTemplateRubricas] = useState<RubricaTemplate[] | null>(null);
+  const [rubricas, setRubricas] = useState<Rubrica[]>([]);
+
+  useEffect(() => {
+    getRubricas()
+      .then((list) => {
+        setTemplateRubricas(list);
+        setRubricas(
+          list.map((r) => ({
+            id: r.id,
+            nombre: r.nombre,
+            nivel: null,
+            observaciones: '',
+          }))
+        );
+      })
+      .catch((err) => {
+        console.error('Error al cargar rúbricas:', err);
+      });
+  }, []);
 
   // Mutación para subir archivo
   const uploadMutation = useMutation({
@@ -189,14 +199,16 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
       horaInicio: '08:00',
       horaFin: '09:00',
     });
-    setRubricas(
-      rubricasTemplate.map((r) => ({
-        id: r.id,
-        nombre: r.nombre,
-        nivel: null,
-        observaciones: '',
-      }))
-    );
+    if (templateRubricas?.length) {
+      setRubricas(
+        templateRubricas.map((r) => ({
+          id: r.id,
+          nombre: r.nombre,
+          nivel: null,
+          observaciones: '',
+        }))
+      );
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -294,9 +306,18 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
     }));
   };
 
-  // Siempre habilitar modo IA (usa mock API)
-  const isApiMode = true; // Siempre activo porque usamos mock API
-  const isLoading = uploadMutation.isPending || aiMutation.isPending || crearVisitaMutation.isPending;
+  const isLoading =
+    uploadMutation.isPending || aiMutation.isPending || crearVisitaMutation.isPending;
+  const rubricasLoading = templateRubricas === null;
+
+  if (rubricasLoading) {
+    return (
+      <div className="flex items-center gap-2 text-muted-foreground py-4">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Cargando criterios de evaluación...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -322,19 +343,19 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
             </button>
             <button
               onClick={() => setModo('ia')}
-              disabled={!isApiMode}
+              disabled={false}
               className={`p-4 rounded-lg border-2 transition-all text-left ${
                 modo === 'ia'
                   ? 'border-primary bg-primary/5'
                   : 'border-border hover:border-primary/50'
-              } ${!isApiMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+              }`}
             >
               <div className="font-semibold text-foreground mb-1 flex items-center gap-2">
                 <Sparkles className="w-4 h-4" />
                 Modo IA (Autocompletar)
               </div>
               <div className="text-sm text-muted-foreground">
-                {isApiMode
+                {true
                   ? 'Sube un documento y la IA completará el formulario'
                   : 'Requiere configuración de API'}
               </div>
@@ -370,7 +391,7 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
             </div>
           </label>
 
-          {modo === 'ia' && archivoSubido && isApiMode && (
+          {modo === 'ia' && archivoSubido && (
             <div className="mt-4">
               <Button
                 onClick={handleSubirYAnalizar}

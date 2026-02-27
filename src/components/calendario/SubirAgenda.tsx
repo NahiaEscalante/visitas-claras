@@ -1,18 +1,18 @@
 import { useState } from 'react';
-import { Upload, FileText, X, Check, Calendar } from 'lucide-react';
+import { Upload, FileText, X, Check, Calendar, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { VisitaProgramada, Profesor } from '@/types';
 import { useApp } from '@/context/AppContext';
 import { useToast } from '@/hooks/use-toast';
+import { uploadAgenda, createVisitasProgramadasBulk } from '@/api/endpoints';
 
 interface SubirAgendaProps {
   onVisitasAgregadas: () => void;
 }
 
 interface FechasPendientes {
-  profesorId: string;
+  profesorId: string | null;
   profesorNombre: string;
   ie: string;
   salon: string;
@@ -21,51 +21,48 @@ interface FechasPendientes {
 }
 
 export function SubirAgenda({ onVisitasAgregadas }: SubirAgendaProps) {
-  const { profesores, agregarVisitaProgramada } = useApp();
+  const { refreshData } = useApp();
   const { toast } = useToast();
   const [archivoSubido, setArchivoSubido] = useState<File | null>(null);
   const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false);
   const [fechasPendientes, setFechasPendientes] = useState<FechasPendientes[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setArchivoSubido(file);
-      // Simulate extracting dates from document
-      generarFechasSimuladas();
+    if (!file) return;
+    setArchivoSubido(file);
+    setUploading(true);
+    try {
+      const result = await uploadAgenda(file);
+      const fechas: FechasPendientes[] = (result.fechasExtraidas || []).map((f) => ({
+        profesorId: f.profesorId ?? null,
+        profesorNombre: f.profesorNombre,
+        ie: f.ie,
+        salon: f.salon,
+        fecha: f.fecha,
+        hora: f.hora,
+      }));
+      setFechasPendientes(fechas);
       setMostrarConfirmacion(true);
+      if (fechas.length === 0 && !result.procesado) {
+        toast({
+          title: 'Sin fechas detectadas',
+          description: 'No se pudieron extraer fechas del documento. Puedes agregar visitas manualmente.',
+          variant: 'destructive',
+        });
+      }
+    } catch (err) {
+      toast({
+        title: 'Error al subir agenda',
+        description: err instanceof Error ? err.message : 'No se pudo procesar el archivo.',
+        variant: 'destructive',
+      });
+      setArchivoSubido(null);
+    } finally {
+      setUploading(false);
     }
-  };
-
-  const generarFechasSimuladas = () => {
-    // Simulate 3 mandatory annual dates for some professors
-    const fechas: FechasPendientes[] = profesores.slice(0, 3).flatMap((profesor) => [
-      {
-        profesorId: profesor.id,
-        profesorNombre: `${profesor.nombre} ${profesor.apellido}`,
-        ie: profesor.ie,
-        salon: profesor.salon,
-        fecha: '2025-12-18',
-        hora: '09:00',
-      },
-      {
-        profesorId: profesor.id,
-        profesorNombre: `${profesor.nombre} ${profesor.apellido}`,
-        ie: profesor.ie,
-        salon: profesor.salon,
-        fecha: '2026-03-15',
-        hora: '10:00',
-      },
-      {
-        profesorId: profesor.id,
-        profesorNombre: `${profesor.nombre} ${profesor.apellido}`,
-        ie: profesor.ie,
-        salon: profesor.salon,
-        fecha: '2026-06-20',
-        hora: '08:30',
-      },
-    ]);
-    setFechasPendientes(fechas);
   };
 
   const handleFechaChange = (index: number, campo: 'fecha' | 'hora', valor: string) => {
@@ -74,30 +71,45 @@ export function SubirAgenda({ onVisitasAgregadas }: SubirAgendaProps) {
     );
   };
 
-  const handleConfirmar = () => {
-    fechasPendientes.forEach((fecha) => {
-      const nuevaVisita: VisitaProgramada = {
-        id: `vp-${Date.now()}-${fecha.profesorId}`,
-        profesorId: fecha.profesorId,
-        profesorNombre: fecha.profesorNombre,
-        fecha: fecha.fecha,
-        hora: fecha.hora,
-        ie: fecha.ie,
-        salon: fecha.salon,
-        confirmada: false,
-      };
-      agregarVisitaProgramada(nuevaVisita);
-    });
-
-    toast({
-      title: 'Agenda guardada',
-      description: `${fechasPendientes.length} visitas han sido programadas exitosamente.`,
-    });
-
-    setArchivoSubido(null);
-    setMostrarConfirmacion(false);
-    setFechasPendientes([]);
-    onVisitasAgregadas();
+  const handleConfirmar = async () => {
+    if (fechasPendientes.length === 0) {
+      toast({
+        title: 'Sin fechas',
+        description: 'No hay fechas para programar.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setSaving(true);
+    try {
+      await createVisitasProgramadasBulk({
+        visitas: fechasPendientes.map((f) => ({
+          profesorId: f.profesorId,
+          fecha: f.fecha,
+          hora: f.hora,
+          ie: f.ie,
+          salon: f.salon,
+          notas: null,
+        })),
+      });
+      toast({
+        title: 'Agenda guardada',
+        description: `${fechasPendientes.length} visitas han sido programadas exitosamente.`,
+      });
+      setArchivoSubido(null);
+      setMostrarConfirmacion(false);
+      setFechasPendientes([]);
+      await refreshData();
+      onVisitasAgregadas();
+    } catch (err) {
+      toast({
+        title: 'Error al guardar',
+        description: err instanceof Error ? err.message : 'No se pudieron crear las visitas programadas.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancelar = () => {
@@ -114,20 +126,25 @@ export function SubirAgenda({ onVisitasAgregadas }: SubirAgendaProps) {
       </h4>
 
       {!mostrarConfirmacion ? (
-        <label className="upload-zone cursor-pointer">
+        <label className={`upload-zone cursor-pointer ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
           <input
             type="file"
             accept=".pdf,.jpg,.jpeg,.png"
             onChange={handleFileUpload}
             className="hidden"
+            disabled={uploading}
           />
-          <Upload className="w-10 h-10 text-primary" />
+          {uploading ? (
+            <Loader2 className="w-10 h-10 text-primary animate-spin" />
+          ) : (
+            <Upload className="w-10 h-10 text-primary" />
+          )}
           <div className="text-center">
             <p className="font-medium text-foreground">
-              Sube el documento con las fechas anuales obligatorias
+              {uploading ? 'Procesando documento...' : 'Sube el documento con las fechas anuales obligatorias'}
             </p>
             <p className="text-sm text-muted-foreground mt-1">
-              PDF o imagen (JPG, PNG)
+              PDF o imagen (JPG, PNG). La IA extraerá las fechas.
             </p>
           </div>
         </label>
@@ -147,7 +164,9 @@ export function SubirAgenda({ onVisitasAgregadas }: SubirAgendaProps) {
           {/* Dates to confirm */}
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Confirma las fechas extraídas del documento antes de agendar:
+              {fechasPendientes.length > 0
+                ? 'Confirma las fechas extraídas del documento antes de agendar:'
+                : 'No se detectaron fechas en el documento. Puedes cancelar y subir otro archivo.'}
             </p>
 
             {fechasPendientes.map((fecha, index) => (
@@ -191,12 +210,20 @@ export function SubirAgenda({ onVisitasAgregadas }: SubirAgendaProps) {
 
           {/* Actions */}
           <div className="flex gap-3">
-            <Button onClick={handleCancelar} variant="outline" className="flex-1">
+            <Button onClick={handleCancelar} variant="outline" className="flex-1" disabled={saving}>
               Cancelar
             </Button>
-            <Button onClick={handleConfirmar} className="btn-primary flex-1">
-              <Check className="w-4 h-4 mr-2" />
-              Confirmar y agendar
+            <Button
+              onClick={handleConfirmar}
+              className="btn-primary flex-1"
+              disabled={saving || fechasPendientes.length === 0}
+            >
+              {saving ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4 mr-2" />
+              )}
+              {saving ? 'Guardando...' : 'Confirmar y agendar'}
             </Button>
           </div>
         </div>
