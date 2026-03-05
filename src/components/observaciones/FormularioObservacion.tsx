@@ -18,6 +18,7 @@ import { useApp } from '@/context/AppContext';
 interface FormularioObservacionProps {
   profesor: Profesor;
   onGuardar: (visita: Visita) => void;
+  onFocusChange?: (enFoco: boolean) => void;
 }
 
 type ModoFormulario = 'manual' | 'ia';
@@ -29,7 +30,7 @@ const nivelesLogro = [
   { value: 4, label: 'IV', description: 'Destacado', color: 'level-iv' },
 ];
 
-export function FormularioObservacion({ profesor, onGuardar }: FormularioObservacionProps) {
+export function FormularioObservacion({ profesor, onGuardar, onFocusChange }: FormularioObservacionProps) {
   const { toast } = useToast();
   const { agregarVisita } = useApp();
   const [modo, setModo] = useState<ModoFormulario>('manual');
@@ -42,6 +43,10 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
   });
   const [advertenciasIA, setAdvertenciasIA] = useState<AIAutocompleteResponse['advertencias']>([]);
   const [camposBajaConfianza, setCamposBajaConfianza] = useState<Set<string>>(new Set());
+  const [observacionGeneralIA, setObservacionGeneralIA] = useState<string | undefined>(undefined);
+  const [puntajeTotalIA, setPuntajeTotalIA] = useState<number | undefined>(undefined);
+  const [explicacionesRubricasIA, setExplicacionesRubricasIA] = useState<AIAutocompleteResponse['explicacionesRubricas']>([]);
+  const [sugerenciasMejoraIA, setSugerenciasMejoraIA] = useState<AIAutocompleteResponse['sugerenciasMejora']>([]);
 
   const [datosDocente, setDatosDocente] = useState<DatosDocente>({
     nombreCompleto: `${profesor.nombre} ${profesor.apellido}`,
@@ -106,6 +111,10 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
       setDatosDocente(data.datosDocente);
       setRubricas(data.rubricas);
       setAdvertenciasIA(data.advertencias || []);
+      setObservacionGeneralIA(data.observacionGeneral || data.textoEstructurado);
+      setPuntajeTotalIA(data.puntajeTotal);
+      setExplicacionesRubricasIA(data.explicacionesRubricas || []);
+      setSugerenciasMejoraIA(data.sugerenciasMejora || []);
       
       // Identificar campos con baja confianza
       const bajaConfianza = new Set<string>();
@@ -173,8 +182,15 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
     setArchivoSubido(null);
     setArchivoId(null);
     setMostrarFormulario(false);
+    if (onFocusChange) {
+      onFocusChange(false);
+    }
     setAdvertenciasIA([]);
     setCamposBajaConfianza(new Set());
+    setObservacionGeneralIA(undefined);
+    setPuntajeTotalIA(undefined);
+    setExplicacionesRubricasIA([]);
+    setSugerenciasMejoraIA([]);
     setDatosDocente({
       nombreCompleto: `${profesor.nombre} ${profesor.apellido}`,
       dni: '',
@@ -205,6 +221,15 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
       setArchivoSubido(file);
       if (modo === 'manual') {
         setMostrarFormulario(true);
+        if (onFocusChange) {
+          onFocusChange(true);
+        }
+      }
+      if (modo === 'ia') {
+        setMostrarFormulario(true);
+        if (onFocusChange) {
+          onFocusChange(true);
+        }
       }
     }
   };
@@ -231,6 +256,9 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
       // Luego analizar con IA usando el ID del archivo subido
       sonnerToast.loading('Analizando documento con IA...', { id: 'ai' });
       await aiMutation.mutateAsync(fileId);
+      if (onFocusChange) {
+        onFocusChange(true);
+      }
     } catch (error) {
       sonnerToast.dismiss('upload');
       sonnerToast.dismiss('ai');
@@ -251,7 +279,13 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
     );
   };
 
-  const calcularNivelTotal = () => {
+  const calcularSumaNiveles = () => {
+    const nivelesValidos = rubricas.filter((r) => r.nivel !== null);
+    if (nivelesValidos.length === 0) return 0;
+    return nivelesValidos.reduce((acc, r) => acc + (r.nivel || 0), 0);
+  };
+
+  const calcularNivelMedio = () => {
     const nivelesValidos = rubricas.filter((r) => r.nivel !== null);
     if (nivelesValidos.length === 0) return 0;
     const suma = nivelesValidos.reduce((acc, r) => acc + (r.nivel || 0), 0);
@@ -259,7 +293,7 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
   };
 
   const handleGuardar = async () => {
-    const nivelTotal = calcularNivelTotal();
+    const nivelTotal = calcularNivelMedio();
     if (nivelTotal === 0) {
       toast({
         title: 'Error',
@@ -281,6 +315,9 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
     // Siempre usar API (mock o real)
     try {
       await crearVisitaMutation.mutateAsync(payload);
+      if (onFocusChange) {
+        onFocusChange(false);
+      }
     } catch (error) {
       // Error ya manejado en la mutación
       return;
@@ -302,51 +339,113 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
     <div className="space-y-6">
       {/* Selector de Modo */}
       {!mostrarFormulario && (
-        <div className="card-flat p-6">
-          <h4 className="font-semibold text-foreground mb-4">
-            Selecciona el modo de registro
-          </h4>
+        <div className="card-flat p-5 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div>
+              <h4 className="font-semibold text-foreground">
+                Selecciona el modo de registro
+              </h4>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Elige si quieres completar la observación manualmente o usando IA.
+              </p>
+            </div>
+          </div>
           <div className="grid sm:grid-cols-2 gap-4">
             <button
               onClick={() => setModo('manual')}
-              className={`p-4 rounded-lg border-2 transition-all text-left ${
+              className={`group flex flex-col justify-between h-full p-4 rounded-xl border transition-all text-left bg-card ${
                 modo === 'manual'
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border hover:border-primary/50'
+                  ? 'border-primary shadow-sm'
+                  : 'border-border hover:border-primary/50 hover:bg-muted/40'
               }`}
             >
-              <div className="font-semibold text-foreground mb-1">Modo Manual</div>
-              <div className="text-sm text-muted-foreground">
-                Completa el formulario manualmente
+              <div>
+                <div className="font-semibold text-foreground mb-1 flex items-center gap-2">
+                  <span className="inline-flex h-6 px-2 items-center rounded-full text-xs font-medium bg-primary/10 text-primary">
+                    Modo manual
+                  </span>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Completa el formulario manualmente, editando cada campo según tu criterio.
+                </div>
               </div>
             </button>
             <button
               onClick={() => setModo('ia')}
               disabled={!isApiMode}
-              className={`p-4 rounded-lg border-2 transition-all text-left ${
+              className={`group flex flex-col justify-between h-full p-4 rounded-xl border transition-all text-left bg-card ${
                 modo === 'ia'
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border hover:border-primary/50'
+                  ? 'border-primary shadow-sm'
+                  : 'border-border hover:border-primary/50 hover:bg-muted/40'
               } ${!isApiMode ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              <div className="font-semibold text-foreground mb-1 flex items-center gap-2">
-                <Sparkles className="w-4 h-4" />
-                Modo IA (Autocompletar)
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {isApiMode
-                  ? 'Sube un documento y la IA completará el formulario'
-                  : 'Requiere configuración de API'}
+              <div>
+                <div className="font-semibold text-foreground mb-1 flex items-center gap-2">
+                  <span className="inline-flex h-6 px-2 items-center rounded-full text-xs font-medium bg-primary/10 text-primary">
+                    Modo IA
+                  </span>
+                  <Sparkles className="w-4 h-4" />
+                  <span>Autocompletar</span>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {isApiMode
+                    ? 'Sube un documento (PDF o imagen) y la IA propondrá datos y calificaciones que luego podrás ajustar.'
+                    : 'Requiere configuración de API'}
+                </div>
               </div>
             </button>
           </div>
         </div>
       )}
 
+      {/* Resumen IA */}
+      {mostrarFormulario && (observacionGeneralIA || puntajeTotalIA || (sugerenciasMejoraIA && sugerenciasMejoraIA.length > 0)) && (
+        <div className="card-flat p-5 space-y-4">
+          <h4 className="font-semibold text-foreground flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary" />
+            Resumen generado por IA
+          </h4>
+
+          {observacionGeneralIA && (
+            <div className="text-sm text-muted-foreground whitespace-pre-line">
+              {observacionGeneralIA}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-foreground">Nivel medio:</span>
+              <span className="level-badge px-3 py-1">
+                {calcularNivelMedio() || '-'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-foreground">Puntaje total:</span>
+              <span className="px-3 py-1 rounded-full bg-accent text-foreground text-sm">
+                {puntajeTotalIA ?? (calcularSumaNiveles() || '-')}
+              </span>
+            </div>
+          </div>
+
+          {sugerenciasMejoraIA && sugerenciasMejoraIA.length > 0 && (
+            <div className="pt-2 border-t border-border/60">
+              <p className="font-medium text-foreground mb-2">
+                Sugerencias de apoyo al docente
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+                {sugerenciasMejoraIA.map((sugerencia, idx) => (
+                  <li key={idx}>{sugerencia}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Upload Zone */}
       {!mostrarFormulario && (
-        <div className="card-flat p-6">
-          <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+        <div className="card-flat p-5 sm:p-6">
+          <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
             <FileText className="w-5 h-5 text-primary" />
             {modo === 'ia' ? 'Subir documento para análisis con IA' : 'Subir documento de observación'}
           </h4>
@@ -369,28 +468,6 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
               </p>
             </div>
           </label>
-
-          {modo === 'ia' && archivoSubido && isApiMode && (
-            <div className="mt-4">
-              <Button
-                onClick={handleSubirYAnalizar}
-                disabled={isLoading}
-                className="btn-primary w-full"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {uploadMutation.isPending ? 'Subiendo archivo...' : 'Analizando con IA...'}
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Subir y analizar con IA
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
         </div>
       )}
 
@@ -413,31 +490,59 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
 
       {/* Form */}
       {mostrarFormulario && (
-        <div className="space-y-6 animate-slide-up">
+        <div className="space-y-5 animate-slide-up">
           {/* Uploaded file indicator */}
           {archivoSubido && (
-            <div className="card-flat p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center">
+            <div className="card-flat p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
                   <FileText className="w-5 h-5 text-primary" />
                 </div>
-                <div>
-                  <p className="font-medium text-foreground">{archivoSubido.name}</p>
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground truncate">{archivoSubido.name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {archivoSubido && (archivoSubido.size / 1024).toFixed(1)} KB
+                    {(archivoSubido.size / 1024).toFixed(1)} KB
                     {modo === 'ia' && aiMutation.isSuccess && (
                       <span className="ml-2 text-success">• Análisis completado</span>
                     )}
                   </p>
                 </div>
               </div>
-              <button
-                onClick={resetFormulario}
-                disabled={isLoading}
-                className="p-2 hover:bg-muted rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-muted-foreground" />
-              </button>
+
+              <div className="flex items-center gap-2">
+                {modo === 'ia' && isApiMode && !aiMutation.isSuccess && (
+                  <Button
+                    onClick={handleSubirYAnalizar}
+                    disabled={isLoading}
+                    className="btn-primary flex items-center gap-2"
+                  >
+                    {isLoading && uploadMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Subiendo...</span>
+                      </>
+                    ) : isLoading && aiMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Analizando con IA...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>Analizar con IA</span>
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                <button
+                  onClick={resetFormulario}
+                  disabled={isLoading}
+                  className="p-2 hover:bg-muted rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-muted-foreground" />
+                </button>
+              </div>
             </div>
           )}
 
@@ -465,8 +570,8 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
             </button>
             
             {seccionesExpandidas.datos && (
-              <div className="p-5 pt-0 grid gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
+              <div className="p-5 pt-0 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="sm:col-span-2 lg:col-span-3">
                   <Label>Nombre completo del docente</Label>
                   <Input
                     value={datosDocente.nombreCompleto}
@@ -498,7 +603,7 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
                     className="mt-1.5"
                   />
                 </div>
-                <div>
+                <div className="sm:col-span-2 lg:col-span-1">
                   <Label>Institución Educativa</Label>
                   <Input
                     value={datosDocente.ie}
@@ -530,7 +635,7 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
                     className="mt-1.5"
                   />
                 </div>
-                <div>
+                <div className="sm:col-span-2 lg:col-span-2">
                   <Label>Áreas curriculares</Label>
                   <Input
                     value={datosDocente.areasCurriculares}
@@ -589,6 +694,7 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
               <div className="p-5 pt-0 space-y-6">
                 {rubricas.map((rubrica, index) => {
                   const tieneBajaConfianza = camposBajaConfianza.has(`rubrica-${rubrica.id}`);
+                  const explicacion = explicacionesRubricasIA?.find((e) => e.rubricaId === rubrica.id);
                   return (
                     <div key={rubrica.id} className="p-4 bg-muted/30 rounded-xl">
                       <div className="flex items-center justify-between mb-3">
@@ -626,7 +732,7 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
                       </div>
 
                       {/* Observations */}
-                      <div>
+                      <div className="space-y-2">
                         <Label className="text-sm text-muted-foreground">Observaciones</Label>
                         <Textarea
                           value={rubrica.observaciones}
@@ -634,6 +740,19 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
                           placeholder="Escribe tus observaciones aquí..."
                           className="mt-1.5 min-h-[80px]"
                         />
+                        {explicacion && (
+                          <div className="text-xs text-muted-foreground bg-background/60 rounded-lg p-3 border border-dashed border-border/60">
+                            <p className="font-medium mb-1">Por qué la IA sugiere esta calificación:</p>
+                            <p className="mb-1">{explicacion.razon}</p>
+                            {explicacion.extractos && explicacion.extractos.length > 0 && (
+                              <ul className="list-disc list-inside space-y-0.5">
+                                {explicacion.extractos.map((ext, i) => (
+                                  <li key={i}>{ext}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -641,22 +760,22 @@ export function FormularioObservacion({ profesor, onGuardar }: FormularioObserva
 
                 {/* Total Level */}
                 <div className="p-4 bg-accent rounded-xl flex items-center justify-between">
-                  <span className="font-semibold text-foreground">Nivel de logro total:</span>
+                  <span className="font-semibold text-foreground">Nivel de logro medio:</span>
                   <div className="flex items-center gap-3">
                     <span className={`level-badge text-lg w-10 h-10 ${
-                      calcularNivelTotal() === 1 ? 'level-i' :
-                      calcularNivelTotal() === 2 ? 'level-ii' :
-                      calcularNivelTotal() === 3 ? 'level-iii' :
-                      calcularNivelTotal() === 4 ? 'level-iv' :
+                      calcularNivelMedio() === 1 ? 'level-i' :
+                      calcularNivelMedio() === 2 ? 'level-ii' :
+                      calcularNivelMedio() === 3 ? 'level-iii' :
+                      calcularNivelMedio() === 4 ? 'level-iv' :
                       'bg-muted text-muted-foreground'
                     }`}>
-                      {calcularNivelTotal() || '-'}
+                      {calcularNivelMedio() || '-'}
                     </span>
                     <span className="text-muted-foreground">
-                      {calcularNivelTotal() === 1 ? 'En inicio' :
-                       calcularNivelTotal() === 2 ? 'En proceso' :
-                       calcularNivelTotal() === 3 ? 'Satisfactorio' :
-                       calcularNivelTotal() === 4 ? 'Destacado' :
+                      {calcularNivelMedio() === 1 ? 'En inicio' :
+                       calcularNivelMedio() === 2 ? 'En proceso' :
+                       calcularNivelMedio() === 3 ? 'Satisfactorio' :
+                       calcularNivelMedio() === 4 ? 'Destacado' :
                        'Sin evaluar'}
                     </span>
                   </div>

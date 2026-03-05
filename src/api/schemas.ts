@@ -61,6 +61,18 @@ export const AIAutocompleteResponseSchema = z.object({
     )
     .optional(),
   textoEstructurado: z.string().optional(),
+  observacionGeneral: z.string().optional(),
+  puntajeTotal: z.number().optional(),
+  explicacionesRubricas: z
+    .array(
+      z.object({
+        rubricaId: z.string(),
+        razon: z.string(),
+        extractos: z.array(z.string()).optional(),
+      })
+    )
+    .optional(),
+  sugerenciasMejora: z.array(z.string()).optional(),
 });
 
 // Schema para payload de crear visita

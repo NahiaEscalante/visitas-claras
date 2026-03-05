@@ -50,18 +50,18 @@ export function HistorialVisitas({ visitas }: HistorialVisitasProps) {
   return (
     <div className="space-y-6">
       {years.map((year) => (
-        <div key={year} className="card-flat p-5">
+        <div key={year} className="card-flat p-4">
           <h4 className="font-semibold text-lg text-foreground mb-4 flex items-center gap-2">
             <Calendar className="w-5 h-5 text-primary" />
             {year}
           </h4>
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {visitasByYear[year]
               .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
               .map((visita, index) => (
                 <div
                   key={visita.id}
-                  className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
+                  className="flex items-center gap-3.5 p-3.5 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
                 >
                   {/* Index */}
                   <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center">
@@ -72,10 +72,10 @@ export function HistorialVisitas({ visitas }: HistorialVisitasProps) {
 
                   {/* Date & Time */}
                   <div className="flex-1">
-                    <p className="font-medium text-foreground">
+                    <p className="font-medium text-sm text-foreground">
                       Visita {visitasByYear[year].length - index}
                     </p>
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
+                    <div className="flex items-center gap-2.5 text-xs text-muted-foreground mt-0.5">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5" />
                         {format(new Date(visita.fecha), "d 'de' MMMM", { locale: es })}
