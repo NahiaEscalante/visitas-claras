@@ -128,10 +128,9 @@ function simulateAIAnalysis(
     };
   });
 
-  // Calcular nivel total
-  const nivelTotal = Math.round(
-    rubricas.reduce((sum, r) => sum + (r.nivel || 0), 0) / rubricas.length
-  );
+  // Calcular nivel medio y puntaje total
+  const sumaNiveles = rubricas.reduce((sum, r) => sum + (r.nivel || 0), 0);
+  const nivelTotal = Math.round(sumaNiveles / rubricas.length);
 
   // Simular confianza (0.6 - 0.95)
   const confianzaGeneral = 0.6 + Math.random() * 0.35;
@@ -162,6 +161,83 @@ function simulateAIAnalysis(
     }
   });
 
+  // Generar explicaciones por rúbrica con "extractos" simulados del documento
+  const explicacionesRubricas = rubricas.map((r) => {
+    const extractos: string[] = [
+      `En la evidencia observada se aprecia que el docente ${
+        r.nivel === 4
+          ? 'supera ampliamente los criterios establecidos'
+          : r.nivel === 3
+          ? 'cumple de manera consistente con los criterios de la rúbrica'
+          : r.nivel === 2
+          ? 'cumple parcialmente con los criterios, con oportunidades claras de mejora'
+          : 'aún no evidencia los comportamientos esperados en la mayoría de situaciones'
+      }.`,
+      `En el documento se identifican ejemplos concretos relacionados con "${r.nombre.toLowerCase()}" que sustentan la valoración asignada.`,
+    ];
+
+    const razon = `La calificación en esta rúbrica se basa en los comportamientos observados en el material revisado y en los criterios descritos en la rúbrica. ${
+      r.nivel === 4
+        ? 'El docente demuestra sistemáticamente un desempeño destacado.'
+        : r.nivel === 3
+        ? 'El docente muestra un desempeño satisfactorio en la mayoría de momentos de la sesión.'
+        : r.nivel === 2
+        ? 'Se observan avances, pero aún hay aspectos clave que no se evidencian de forma consistente.'
+        : 'Se requiere acompañamiento cercano para que el docente incorpore las prácticas descritas en la rúbrica.'
+    }`;
+
+    return {
+      rubricaId: r.id,
+      razon,
+      extractos,
+    };
+  });
+
+  // Generar sugerencias de mejora a partir de las rúbricas con niveles más bajos
+  const sugerenciasMejora: string[] = [];
+
+  rubricas.forEach((r) => {
+    if (!r.nivel || r.nivel >= 3) return;
+
+    if (r.id === 'involucra') {
+      sugerenciasMejora.push(
+        'Planificar actividades que exijan participación activa de todos los estudiantes (preguntas dirigidas, trabajo en parejas o grupos pequeños, uso de materiales concretos).'
+      );
+    } else if (r.id === 'razonamiento') {
+      sugerenciasMejora.push(
+        'Incorporar preguntas abiertas y tareas que pidan a los estudiantes explicar cómo llegaron a una respuesta o proponer diferentes soluciones.'
+      );
+    } else if (r.id === 'evalua') {
+      sugerenciasMejora.push(
+        'Introducir momentos breves de verificación del aprendizaje (preguntas de salida, listas de cotejo sencillas) para retroalimentar a los estudiantes durante la sesión.'
+      );
+    } else if (r.id === 'respeto') {
+      sugerenciasMejora.push(
+        'Reforzar expresiones verbales y gestos de reconocimiento hacia los estudiantes, cuidando el tono y el lenguaje corporal en todo momento.'
+      );
+    } else if (r.id === 'comportamiento') {
+      sugerenciasMejora.push(
+        'Establecer reglas claras y compartidas con los estudiantes, usando recordatorios positivos y acuerdos visibles en el aula.'
+      );
+    }
+  });
+
+  if (sugerenciasMejora.length === 0) {
+    sugerenciasMejora.push(
+      'Mantener las prácticas pedagógicas observadas y documentar ejemplos concretos para compartir con otros docentes como buenas prácticas.'
+    );
+  }
+
+  const observacionGeneral = `El documento de observación muestra que ${datosDocente.nombreCompleto} desarrolla la sesión en un contexto de ${datosDocente.nivelEducativo} en el grado ${datosDocente.grado} sección ${datosDocente.seccion}. En conjunto, las evidencias revisadas indican un nivel de logro promedio ${
+    nivelTotal === 4
+      ? 'destacado'
+      : nivelTotal === 3
+      ? 'satisfactorio'
+      : nivelTotal === 2
+      ? 'en proceso'
+      : 'en inicio'
+  }, con oportunidades de mejora focalizadas en las rúbricas con niveles más bajos.`;
+
   return {
     datosDocente,
     rubricas,
@@ -172,6 +248,10 @@ function simulateAIAnalysis(
     },
     advertencias: advertencias.length > 0 ? advertencias : undefined,
     textoEstructurado: `Documento de observación analizado para ${datosDocente.nombreCompleto} el ${fecha} a las ${hora}.`,
+    observacionGeneral,
+    puntajeTotal: sumaNiveles,
+    explicacionesRubricas,
+    sugerenciasMejora,
   };
 }
 

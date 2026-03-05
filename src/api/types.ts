@@ -27,6 +27,29 @@ export interface AIAutocompleteResponse {
     tipo: 'baja_confianza' | 'campo_faltante' | 'inconsistencia';
   }>;
   textoEstructurado?: string; // Texto extraído del documento
+  /**
+   * Observación general generada por la IA a partir del documento.
+   */
+  observacionGeneral?: string;
+
+  /**
+   * Puntaje total calculado a partir de la suma de los niveles de las rúbricas.
+   */
+  puntajeTotal?: number;
+
+  /**
+   * Explicaciones por rúbrica sobre por qué se asignó cada nivel, incluyendo posibles extractos del documento.
+   */
+  explicacionesRubricas?: Array<{
+    rubricaId: string;
+    razon: string;
+    extractos?: string[];
+  }>;
+
+  /**
+   * Sugerencias de mejora generadas por la IA para apoyar al docente.
+   */
+  sugerenciasMejora?: string[];
 }
 
 /**
