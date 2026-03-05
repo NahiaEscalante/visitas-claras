@@ -14,6 +14,7 @@ interface AppContextType {
   agregarVisita: (visita: Visita) => void;
   agregarVisitaProgramada: (visita: VisitaProgramada) => void;
   confirmarVisitaProgramada: (id: string) => void;
+  actualizarVisitaProgramada: (id: string, datos: Partial<VisitaProgramada>) => void;
   getVisitasByProfesor: (profesorId: string) => Visita[];
   getProfesorById: (id: string) => Profesor | undefined;
   logout: () => Promise<void>;
@@ -73,6 +74,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     refreshData();
   };
 
+  const actualizarVisitaProgramada = (id: string, datos: Partial<VisitaProgramada>) => {
+    setVisitasProgramadas(prev =>
+      prev.map(v => (v.id === id ? { ...v, ...datos } : v))
+    );
+    // Sincronizar con mock API
+    refreshData();
+  };
+
   const getVisitasByProfesor = (profesorId: string) => {
     return visitas.filter(v => v.profesorId === profesorId);
   };
@@ -116,6 +125,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         agregarVisita,
         agregarVisitaProgramada,
         confirmarVisitaProgramada,
+        actualizarVisitaProgramada,
         getVisitasByProfesor,
         getProfesorById,
         logout,

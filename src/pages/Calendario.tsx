@@ -1,17 +1,14 @@
 import { useState } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { CalendarioMensual } from '@/components/calendario/CalendarioMensual';
-import { SubirAgenda } from '@/components/calendario/SubirAgenda';
+import { AsistenteAgendaPanel } from '@/components/calendario/AsistenteAgendaPanel';
 import { ModalConfirmacion } from '@/components/calendario/ModalConfirmacion';
 import { useApp } from '@/context/AppContext';
 import { VisitaProgramada } from '@/types';
-import { Calendar, Clock, Building2, GraduationCap, Check, AlertCircle } from 'lucide-react';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
-import { Button } from '@/components/ui/button';
+import { Calendar } from 'lucide-react';
 
 export default function Calendario() {
-  const { visitasProgramadas, confirmarVisitaProgramada } = useApp();
+  const { visitasProgramadas, confirmarVisitaProgramada, agregarVisitaProgramada, actualizarVisitaProgramada } = useApp();
   const [selectedVisita, setSelectedVisita] = useState<VisitaProgramada | null>(null);
   const [key, setKey] = useState(0);
 
@@ -21,8 +18,48 @@ export default function Calendario() {
     }
   };
 
-  const visitasPendientes = visitasProgramadas.filter((v) => !v.confirmada);
-  const visitasConfirmadas = visitasProgramadas.filter((v) => v.confirmada);
+  const handleConfirmarCambioAsistente = (cambio: any) => {
+    // Procesar el cambio propuesto por el asistente
+    if (cambio.tipo === 'crear') {
+      const nuevaVisita: VisitaProgramada = {
+        id: `vp-${Date.now()}`,
+        profesorId: `prof-${Date.now()}`,
+        profesorNombre: cambio.profesorNombre,
+        fecha: cambio.fecha,
+        hora: cambio.hora,
+        ie: cambio.ie,
+        salon: cambio.salon,
+        confirmada: false,
+      };
+      agregarVisitaProgramada(nuevaVisita);
+    } else if (cambio.tipo === 'reprogramar') {
+      // Buscar visita existente y actualizar
+      const visitaExistente = visitasProgramadas.find(v => 
+        v.profesorNombre === cambio.profesorNombre && !v.confirmada
+      );
+      if (visitaExistente) {
+        actualizarVisitaProgramada(visitaExistente.id, {
+          fecha: cambio.fecha,
+          hora: cambio.hora,
+        });
+      }
+    } else if (cambio.tipo === 'cancelar') {
+      // Buscar visita existente y eliminar (marcar como cancelada)
+      const visitaExistente = visitasProgramadas.find(v => 
+        v.profesorNombre === cambio.profesorNombre && !v.confirmada
+      );
+      if (visitaExistente) {
+        // Por ahora, simplemente actualizamos para reflejar el cambio
+        actualizarVisitaProgramada(visitaExistente.id, {
+          fecha: cambio.fecha,
+          hora: cambio.hora,
+        });
+      }
+    }
+    
+    // Forzar re-render del calendario
+    setKey(prev => prev + 1);
+  };
 
   return (
     <Layout>
@@ -42,9 +79,9 @@ export default function Calendario() {
           </p>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Left Column: Calendar */}
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-12 gap-6">
+          {/* Left Column: Calendar (8 columns) */}
+          <div className="col-span-8">
             <CalendarioMensual
               key={key}
               visitas={visitasProgramadas}
@@ -52,71 +89,9 @@ export default function Calendario() {
             />
           </div>
 
-          {/* Right Column: Upload & List */}
-          <div className="space-y-6">
-            {/* Upload */}
-            <SubirAgenda onVisitasAgregadas={() => setKey((k) => k + 1)} />
-
-            {/* Pending visits */}
-            {visitasPendientes.length > 0 && (
-              <div className="card-flat p-5">
-                <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-warning" />
-                  Pendientes de confirmar ({visitasPendientes.length})
-                </h4>
-                <div className="space-y-3">
-                  {visitasPendientes.map((visita) => (
-                    <button
-                      key={visita.id}
-                      onClick={() => setSelectedVisita(visita)}
-                      className="w-full text-left p-3 bg-warning/5 border border-warning/20 rounded-lg hover:bg-warning/10 transition-colors"
-                    >
-                      <p className="font-medium text-foreground">{visita.profesorNombre}</p>
-                      <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5" />
-                          {format(new Date(visita.fecha), 'd MMM', { locale: es })}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5" />
-                          {visita.hora}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Confirmed visits */}
-            {visitasConfirmadas.length > 0 && (
-              <div className="card-flat p-5">
-                <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                  <Check className="w-5 h-5 text-success" />
-                  Confirmadas ({visitasConfirmadas.length})
-                </h4>
-                <div className="space-y-3">
-                  {visitasConfirmadas.slice(0, 5).map((visita) => (
-                    <div
-                      key={visita.id}
-                      className="p-3 bg-success/5 border border-success/20 rounded-lg"
-                    >
-                      <p className="font-medium text-foreground">{visita.profesorNombre}</p>
-                      <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5" />
-                          {format(new Date(visita.fecha), 'd MMM', { locale: es })}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5" />
-                          {visita.hora}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+          {/* Right Column: Assistant Panel (4 columns) */}
+          <div className="col-span-4">
+            <AsistenteAgendaPanel onConfirmarCambio={handleConfirmarCambioAsistente} />
           </div>
         </div>
       </div>
