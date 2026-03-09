@@ -380,6 +380,26 @@ export function AsistenteAgendaPanel({ onCambiosAplicados }: AsistenteAgendaPane
         </div>
       )}
 
+      {/* Predefined Suggestions */}
+      {messages.length <= 1 && (
+        <div className="px-4 py-2 border-t border-border flex-shrink-0 space-y-1.5">
+          <p className="text-[11px] text-muted-foreground font-medium">Sugerencias rápidas:</p>
+          {[
+            'Programa una visita a Luis Alberto Ramírez Soto el 10 de marzo de 2026 a las 9:00',
+            'Programa una visita a José Miguel Vargas Quispe y María Fernanda Salazar López el 11 de marzo de 2026 a las 10:00',
+            'Programa una visita a Rosario Gómez el 12 de marzo de 2026 a las 14:00',
+          ].map((suggestion, i) => (
+            <button
+              key={i}
+              onClick={() => setInputValue(suggestion)}
+              className="block w-full text-left border border-border/60 rounded-lg px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer transition-colors"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Input */}
       <div className="p-4 border-t border-border flex-shrink-0">
         <div className="flex gap-2">

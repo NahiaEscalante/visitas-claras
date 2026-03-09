@@ -8,8 +8,8 @@ import { toast } from 'sonner';
 const navItems = [
   { to: '/observaciones', label: 'Observaciones', icon: ClipboardList },
   { to: '/calendario', label: 'Calendario', icon: Calendar },
-  { to: '/historial', label: 'Historial', icon: History },
-  { to: '/ayuda', label: 'Ayuda', icon: HelpCircle },
+  { to: '/historial', label: 'Historial', icon: History, disabled: true },
+  { to: '/ayuda', label: 'Ayuda', icon: HelpCircle, disabled: true },
 ];
 
 const roleLabels: Record<string, string> = {
@@ -51,7 +51,18 @@ export function Navbar() {
 
           {/* Navigation */}
           <nav className="hidden md:flex items-center gap-1">
-            {navItems.map(({ to, label, icon: Icon }) => {
+            {navItems.map(({ to, label, icon: Icon, disabled }) => {
+              if (disabled) {
+                return (
+                  <span
+                    key={to}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-400 cursor-not-allowed opacity-50"
+                  >
+                    <Icon className="w-4 h-4" />
+                    {label}
+                  </span>
+                );
+              }
               const isActive = location.pathname === to || location.pathname.startsWith(to + '/');
               return (
                 <NavLink
@@ -104,7 +115,18 @@ export function Navbar() {
 
         {/* Mobile Navigation */}
         <nav className="md:hidden flex items-center gap-1 pb-3 overflow-x-auto">
-          {navItems.map(({ to, label, icon: Icon }) => {
+          {navItems.map(({ to, label, icon: Icon, disabled }) => {
+            if (disabled) {
+              return (
+                <span
+                  key={to}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap text-gray-400 cursor-not-allowed opacity-50"
+                >
+                  <Icon className="w-4 h-4" />
+                  {label}
+                </span>
+              );
+            }
             const isActive = location.pathname === to || location.pathname.startsWith(to + '/');
             return (
               <NavLink
