@@ -286,7 +286,7 @@ export function AsistenteAgendaPanel({ onCambiosAplicados }: AsistenteAgendaPane
   );
 
   return (
-    <div className="flex flex-col bg-card rounded-xl border shadow-sm" style={{ height: 'calc(100vh - 12rem)', maxHeight: '700px', minHeight: '400px' }}>
+    <div className="flex flex-col bg-card rounded-xl border shadow-sm" style={{ height: 'calc(100vh - 12rem)', maxHeight: '850px', minHeight: '400px' }}>
       {/* Header */}
       <div className="p-4 border-b border-border flex-shrink-0">
         <div className="flex items-center justify-between">
@@ -386,7 +386,6 @@ export function AsistenteAgendaPanel({ onCambiosAplicados }: AsistenteAgendaPane
           <p className="text-[11px] text-muted-foreground font-medium">Sugerencias rápidas:</p>
           {[
             'Programa una visita a Luis Alberto Ramírez Soto el 10 de marzo de 2026 a las 9:00',
-            'Programa una visita a José Miguel Vargas Quispe y María Fernanda Salazar López el 11 de marzo de 2026 a las 10:00',
             'Programa una visita a Rosario Gómez el 12 de marzo de 2026 a las 14:00',
           ].map((suggestion, i) => (
             <button
