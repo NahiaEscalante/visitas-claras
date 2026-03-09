@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { login } from "@/services/auth";
+import { isApiModeEnabled } from "@/api/config";
 import { toast } from "sonner";
 
 export default function Login() {
@@ -36,7 +37,10 @@ export default function Login() {
         toast.success("¡Bienvenido!", {
           description: `Hola ${response.data.user.nombre} ${response.data.user.apellido}`,
         });
-        navigate("/observaciones");
+        // Disparar evento para que AppContext actualice el estado inmediatamente
+        window.dispatchEvent(new Event('auth:login'));
+        // Pequeño delay para que AppContext procese el evento antes de navegar
+        setTimeout(() => navigate("/observaciones"), 50);
       } else {
         setError(response.error?.message || "Error al iniciar sesión");
         toast.error("Error al iniciar sesión", {
@@ -162,11 +166,13 @@ export default function Login() {
                 )}
               </Button>
 
-              <div className="text-xs text-muted-foreground text-center pt-2 border-t">
-                <p className="mb-1">Credenciales de prueba:</p>
-                <p>director@ejemplo.edu.pe / director123</p>
-                <p>supervisor@ejemplo.edu.pe / supervisor123</p>
-              </div>
+              {!isApiModeEnabled() && (
+                <div className="text-xs text-muted-foreground text-center pt-2 border-t">
+                  <p className="mb-1">Credenciales de prueba:</p>
+                  <p>director@ejemplo.edu.pe / director123</p>
+                  <p>supervisor@ejemplo.edu.pe / supervisor123</p>
+                </div>
+              )}
             </form>
           </div>
 

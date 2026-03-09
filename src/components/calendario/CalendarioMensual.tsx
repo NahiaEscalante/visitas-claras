@@ -22,7 +22,7 @@ export function CalendarioMensual({ visitas, onSelectVisita }: CalendarioMensual
   const paddingDays = startDay === 0 ? 6 : startDay - 1;
 
   const getVisitasForDay = (day: Date) => {
-    return visitas.filter((v) => isSameDay(new Date(v.fecha), day));
+    return visitas.filter((v) => isSameDay(new Date(v.fecha + 'T12:00:00'), day));
   };
 
   const diasSemana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];

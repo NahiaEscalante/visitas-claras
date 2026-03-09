@@ -8,7 +8,7 @@ import { VisitaProgramada } from '@/types';
 import { Calendar } from 'lucide-react';
 
 export default function Calendario() {
-  const { visitasProgramadas, confirmarVisitaProgramada, agregarVisitaProgramada, actualizarVisitaProgramada } = useApp();
+  const { visitasProgramadas, confirmarVisitaProgramada, refreshData } = useApp();
   const [selectedVisita, setSelectedVisita] = useState<VisitaProgramada | null>(null);
   const [key, setKey] = useState(0);
 
@@ -18,46 +18,13 @@ export default function Calendario() {
     }
   };
 
-  const handleConfirmarCambioAsistente = (cambio: any) => {
-    // Procesar el cambio propuesto por el asistente
-    if (cambio.tipo === 'crear') {
-      const nuevaVisita: VisitaProgramada = {
-        id: `vp-${Date.now()}`,
-        profesorId: `prof-${Date.now()}`,
-        profesorNombre: cambio.profesorNombre,
-        fecha: cambio.fecha,
-        hora: cambio.hora,
-        ie: cambio.ie,
-        salon: cambio.salon,
-        confirmada: false,
-      };
-      agregarVisitaProgramada(nuevaVisita);
-    } else if (cambio.tipo === 'reprogramar') {
-      // Buscar visita existente y actualizar
-      const visitaExistente = visitasProgramadas.find(v => 
-        v.profesorNombre === cambio.profesorNombre && !v.confirmada
-      );
-      if (visitaExistente) {
-        actualizarVisitaProgramada(visitaExistente.id, {
-          fecha: cambio.fecha,
-          hora: cambio.hora,
-        });
-      }
-    } else if (cambio.tipo === 'cancelar') {
-      // Buscar visita existente y eliminar (marcar como cancelada)
-      const visitaExistente = visitasProgramadas.find(v => 
-        v.profesorNombre === cambio.profesorNombre && !v.confirmada
-      );
-      if (visitaExistente) {
-        // Por ahora, simplemente actualizamos para reflejar el cambio
-        actualizarVisitaProgramada(visitaExistente.id, {
-          fecha: cambio.fecha,
-          hora: cambio.hora,
-        });
-      }
-    }
-    
-    // Forzar re-render del calendario
+  /**
+   * Callback cuando el asistente de agenda aplica cambios.
+   * La API ya creó/modificó/canceló las visitas en el backend.
+   * Solo necesitamos refrescar datos y re-renderizar el calendario.
+   */
+  const handleCambiosAplicados = () => {
+    refreshData();
     setKey(prev => prev + 1);
   };
 
@@ -91,7 +58,7 @@ export default function Calendario() {
 
           {/* Right Column: Assistant Panel (4 columns) */}
           <div className="col-span-4">
-            <AsistenteAgendaPanel onConfirmarCambio={handleConfirmarCambioAsistente} />
+            <AsistenteAgendaPanel onCambiosAplicados={handleCambiosAplicados} />
           </div>
         </div>
       </div>

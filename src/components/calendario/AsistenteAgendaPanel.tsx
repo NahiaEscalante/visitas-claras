@@ -1,195 +1,302 @@
-import { useState } from 'react';
-import { Sparkles, Paperclip, Send, User, Building2, GraduationCap, Clock } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Sparkles, Paperclip, Send, User, Building2, GraduationCap, Clock, Loader2, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { VisitaProgramada } from '@/types';
+import { CalendarChatResponse, CalendarChatAction } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { isApiModeEnabled } from '@/api/config';
+import { apiCalendarChatMessage, apiCalendarChatConfirm, apiCalendarChatCancel, apiUploadArchivo } from '@/api/endpoints';
+import { useApp } from '@/context/AppContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+
+// ─── Tipos internos ────────────────────────────────────────────────────
 
 interface ChatMessage {
   id: string;
   role: 'assistant' | 'user';
   content: string;
   timestamp: Date;
-}
-
-interface CambioPropuesto {
-  id: string;
-  profesorNombre: string;
-  ie: string;
-  salon: string;
-  fecha: string;
-  hora: string;
-  tipo: 'crear' | 'reprogramar' | 'cancelar';
+  /** Datos de propuesta (solo en mensajes tipo proposal) */
+  proposal?: {
+    proposalId: string;
+    actions: CalendarChatAction[];
+  };
+  /** Resultados de confirmación */
+  results?: CalendarChatResponse['results'];
 }
 
 interface AsistenteAgendaPanelProps {
-  onConfirmarCambio: (cambio: CambioPropuesto) => void;
+  onCambiosAplicados?: () => void;
 }
 
-export function AsistenteAgendaPanel({ onConfirmarCambio }: AsistenteAgendaPanelProps) {
+// ─── Componente ────────────────────────────────────────────────────────
+
+export function AsistenteAgendaPanel({ onCambiosAplicados }: AsistenteAgendaPanelProps) {
   const { toast } = useToast();
+  const { refreshData } = useApp();
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
-      id: '1',
+      id: 'welcome',
       role: 'assistant',
-      content: 'Dime qué necesitas: reprogramar, cancelar o crear visitas.\nEjemplo: "Reprograma a Roberto para 2026-03-21 10:30"',
-      timestamp: new Date()
-    }
+      content: 'Hola 👋 Soy tu asistente de agenda. Dime qué necesitas:\n\n• Crear una visita\n• Reprogramar una visita\n• Cancelar una visita\n\nEjemplo: "Programa una visita a María García el viernes a las 10:00"',
+      timestamp: new Date(),
+    },
   ]);
   const [inputValue, setInputValue] = useState('');
-  const [cambioPropuesto, setCambioPropuesto] = useState<CambioPropuesto | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [pendingProposalId, setPendingProposalId] = useState<string | null>(null);
+  const [pendingArchivoId, setPendingArchivoId] = useState<string | null>(null);
+
+  // Auto-scroll al nuevo mensaje
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // ── Enviar mensaje ──
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || isProcessing) return;
 
+    const userText = inputValue.trim();
     const userMessage: ChatMessage = {
-      id: Date.now().toString(),
+      id: `user-${Date.now()}`,
       role: 'user',
-      content: inputValue,
-      timestamp: new Date()
+      content: userText,
+      timestamp: new Date(),
     };
 
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsProcessing(true);
 
-    // Simular procesamiento del mensaje
-    setTimeout(() => {
-      const respuesta = procesarMensaje(inputValue);
-      setMessages(prev => [...prev, respuesta.assistantMessage]);
-      
-      if (respuesta.cambioPropuesto) {
-        setCambioPropuesto(respuesta.cambioPropuesto);
+    try {
+      if (!isApiModeEnabled()) {
+        // Fallback mock: responder con un genérico
+        await new Promise(r => setTimeout(r, 800));
+        addAssistantMessage('Esta funcionalidad requiere la API activa. Configura VITE_API_BASE_URL para usar el asistente de agenda.');
+        return;
       }
-      
-      setIsProcessing(false);
-    }, 1000);
-  };
 
-  const procesarMensaje = (mensaje: string): {
-    assistantMessage: ChatMessage;
-    cambioPropuesto?: CambioPropuesto;
-  } => {
-    const lowerMensaje = mensaje.toLowerCase();
-    
-    // Simular extracción de información
-    let cambio: CambioPropuesto | null = null;
-    let respuesta = '';
-
-    if (lowerMensaje.includes('reprograma') || lowerMensaje.includes('reprogramar')) {
-      // Extraer nombre y fecha/hora (simulado)
-      cambio = {
-        id: Date.now().toString(),
-        profesorNombre: 'Juan Pérez',
-        ie: 'IE San Martin',
-        salon: 'Salón A',
-        fecha: '2026-03-21',
-        hora: '10:30',
-        tipo: 'reprogramar'
-      };
-      respuesta = 'Listo. Propuse reprogramar a Juan Pérez para 21 de marzo a las 10:30.\nConfirma el borrador.';
-    } else if (lowerMensaje.includes('cancela') || lowerMensaje.includes('cancelar')) {
-      cambio = {
-        id: Date.now().toString(),
-        profesorNombre: 'Juan Pérez',
-        ie: 'IE San Martin',
-        salon: 'Salón A',
-        fecha: '2026-03-15',
-        hora: '10:00',
-        tipo: 'cancelar'
-      };
-      respuesta = 'Entendido. Propuse cancelar la visita de Juan Pérez del 15 de marzo.\nConfirma el borrador.';
-    } else if (lowerMensaje.includes('crea') || lowerMensaje.includes('crear') || lowerMensaje.includes('agenda')) {
-      cambio = {
-        id: Date.now().toString(),
-        profesorNombre: 'María González',
-        ie: 'IE Los Pinos',
-        salon: 'Salón B',
-        fecha: '2026-03-25',
-        hora: '14:00',
-        tipo: 'crear'
-      };
-      respuesta = 'Perfecto. Propuse crear una nueva visita para María González el 25 de marzo a las 14:00.\nConfirma el borrador.';
-    } else {
-      respuesta = 'No entendí la solicitud. Por favor, dime si quieres:\n• Reprogramar una visita existente\n• Cancelar una visita\n• Crear una nueva visita\n\nEjemplo: "Reprograma a Roberto para 2026-03-21 10:30"';
-    }
-
-    return {
-      assistantMessage: {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: respuesta,
-        timestamp: new Date()
-      },
-      cambioPropuesto: cambio || undefined
-    };
-  };
-
-  const handleConfirmarCambio = () => {
-    if (!cambioPropuesto) return;
-
-    onConfirmarCambio(cambioPropuesto);
-    
-    toast({
-      title: 'Cambio confirmado',
-      description: `Se ha ${cambioPropuesto.tipo}do la visita exitosamente.`,
-    });
-
-    // Limpiar el borrador y añadir mensaje de confirmación
-    setCambioPropuesto(null);
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(),
-      role: 'assistant',
-      content: `✅ Cambio confirmado: ${cambioPropuesto.tipo === 'crear' ? 'Creada' : cambioPropuesto.tipo === 'reprogramar' ? 'Reprogramada' : 'Cancelada'} la visita de ${cambioPropuesto.profesorNombre}.`,
-      timestamp: new Date()
-    }]);
-  };
-
-  const handleDescartarCambio = () => {
-    setCambioPropuesto(null);
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(),
-      role: 'assistant',
-      content: 'Borrador descartado. Si necesitas hacer otro cambio, dímelo.',
-      timestamp: new Date()
-    }]);
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      toast({
-        title: 'Archivo recibido',
-        description: `Procesando ${file.name} para extraer fechas...`,
+      const response = await apiCalendarChatMessage({
+        text: userText,
+        conversationId,
+        archivoId: pendingArchivoId,
       });
-      
-      // Simular procesamiento de archivo
-      setTimeout(() => {
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: `He analizado ${file.name} y encontré 3 fechas posibles. ¿Cuál te gustaría procesar?\n\n1. Juan Pérez - 15 de marzo, 10:00\n2. María González - 20 de marzo, 14:30\n3. Roberto López - 25 de marzo, 09:00`,
-          timestamp: new Date()
-        }]);
-      }, 1500);
+
+      // Limpiar archivoId pendiente tras usarlo
+      setPendingArchivoId(null);
+
+      handleChatResponse(response);
+    } catch (error) {
+      addAssistantMessage(`⚠️ Error: ${error instanceof Error ? error.message : 'No se pudo procesar el mensaje'}`);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  return (
-    <div className="h-full flex flex-col bg-card rounded-xl border shadow-sm">
-      {/* Header */}
-      <div className="p-5 border-b border-border">
-        <div className="flex items-center justify-between">
+  // ── Procesar respuesta del backend ──
+
+  const handleChatResponse = (data: CalendarChatResponse) => {
+    switch (data.type) {
+      case 'ask':
+        addAssistantMessage(data.message + (data.missingFields?.length
+          ? `\n\nNecesito: ${data.missingFields.join(', ')}`
+          : ''));
+        break;
+
+      case 'info':
+        addAssistantMessage(data.message);
+        break;
+
+      case 'proposal':
+        setPendingProposalId(data.proposalId ?? null);
+        setMessages(prev => [...prev, {
+          id: `proposal-${Date.now()}`,
+          role: 'assistant',
+          content: data.message,
+          timestamp: new Date(),
+          proposal: {
+            proposalId: data.proposalId!,
+            actions: data.actions || [],
+          },
+        }]);
+        break;
+
+      case 'result':
+        setPendingProposalId(null);
+        setMessages(prev => [...prev, {
+          id: `result-${Date.now()}`,
+          role: 'assistant',
+          content: data.message,
+          timestamp: new Date(),
+          results: data.results,
+        }]);
+        // Refrescar datos del contexto tras cambios exitosos
+        refreshData();
+        onCambiosAplicados?.();
+        break;
+
+      default:
+        addAssistantMessage(data.message || 'Respuesta no reconocida.');
+    }
+  };
+
+  // ── Confirmar propuesta ──
+
+  const handleConfirmar = async () => {
+    if (!pendingProposalId || isProcessing) return;
+
+    setIsProcessing(true);
+    try {
+      const response = await apiCalendarChatConfirm({ proposalId: pendingProposalId });
+      handleChatResponse(response);
+      toast({
+        title: 'Cambios aplicados',
+        description: 'Los cambios en la agenda se han confirmado exitosamente.',
+      });
+    } catch (error) {
+      addAssistantMessage(`⚠️ Error al confirmar: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ── Cancelar propuesta ──
+
+  const handleDescartar = async () => {
+    if (!pendingProposalId || isProcessing) return;
+
+    setIsProcessing(true);
+    try {
+      const response = await apiCalendarChatCancel({ proposalId: pendingProposalId });
+      setPendingProposalId(null);
+      handleChatResponse(response);
+    } catch (error) {
+      addAssistantMessage('Propuesta descartada.');
+      setPendingProposalId(null);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ── Subir archivo ──
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!isApiModeEnabled()) {
+      toast({ title: 'Requiere API', description: 'Configura VITE_API_BASE_URL para usar esta funcionalidad.' });
+      return;
+    }
+
+    setIsProcessing(true);
+    addAssistantMessage(`📎 Procesando archivo: ${file.name}...`);
+
+    try {
+      const uploadResult = await apiUploadArchivo(file, 'documento');
+      setPendingArchivoId(uploadResult.id);
+      addAssistantMessage(`✅ Archivo "${file.name}" subido. Ahora escribe qué quieres hacer con él (ej: "Programa las visitas del archivo").`);
+    } catch (error) {
+      addAssistantMessage(`⚠️ Error al subir archivo: ${error instanceof Error ? error.message : 'No se pudo subir'}`);
+    } finally {
+      setIsProcessing(false);
+      // Limpiar el input para permitir subir el mismo archivo otra vez
+      e.target.value = '';
+    }
+  };
+
+  // ── Helper ──
+
+  const addAssistantMessage = (content: string) => {
+    setMessages(prev => [...prev, {
+      id: `assistant-${Date.now()}`,
+      role: 'assistant',
+      content,
+      timestamp: new Date(),
+    }]);
+  };
+
+  // ── Render helpers ──
+
+  const renderActionCard = (action: CalendarChatAction, index: number) => {
+    const actionLabels: Record<string, string> = {
+      create: '📅 Crear visita',
+      update: '✏️ Modificar visita',
+      cancel: '❌ Cancelar visita',
+      reschedule: '🔄 Reprogramar visita',
+    };
+
+    return (
+      <div key={index} className="bg-card rounded-lg p-3 border">
+        <div className="space-y-2">
+          <span className="text-xs font-medium text-primary">
+            {actionLabels[action.actionType] || action.actionType}
+          </span>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-primary" />
+            <div className="w-7 h-7 rounded-full bg-accent flex items-center justify-center">
+              <User className="w-3.5 h-3.5 text-accent-foreground" />
             </div>
             <div>
-              <h3 className="font-semibold text-foreground">Asistente de agenda</h3>
-              <p className="text-sm text-muted-foreground">Reagenda en lenguaje natural, con confirmación.</p>
+              <p className="font-medium text-foreground text-sm">{action.profesorNombre || 'Profesor'}</p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {action.ie && (
+                  <span className="flex items-center gap-1">
+                    <Building2 className="w-3 h-3" />
+                    {action.ie}
+                  </span>
+                )}
+                {action.salon && (
+                  <span className="flex items-center gap-1">
+                    <GraduationCap className="w-3 h-3" />
+                    {action.salon}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          {action.fecha && (
+            <div className="flex items-center gap-2 text-xs pt-1 border-t border-border/60">
+              <Clock className="w-3.5 h-3.5 text-primary" />
+              <span>
+                {format(new Date(action.fecha + 'T12:00:00'), "d 'de' MMMM, yyyy", { locale: es })}
+                {action.hora && ` • ${action.hora}`}
+              </span>
+              {action.duracionMinutos && (
+                <span className="text-muted-foreground">({action.duracionMinutos} min)</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderResultBadge = (result: { actionType: string; ok: boolean }) => (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
+      result.ok ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+    }`}>
+      {result.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+      {result.actionType}
+    </span>
+  );
+
+  return (
+    <div className="flex flex-col bg-card rounded-xl border shadow-sm" style={{ height: 'calc(100vh - 12rem)', maxHeight: '700px', minHeight: '400px' }}>
+      {/* Header */}
+      <div className="p-4 border-b border-border flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground text-sm">Asistente de agenda</h3>
+              <p className="text-xs text-muted-foreground">Lenguaje natural, con confirmación.</p>
             </div>
           </div>
           <div className="relative">
@@ -198,107 +305,93 @@ export function AsistenteAgendaPanel({ onConfirmarCambio }: AsistenteAgendaPanel
               accept=".pdf,.jpg,.jpeg,.png"
               onChange={handleFileUpload}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              disabled={isProcessing}
             />
-            <Button variant="outline" size="sm">
-              <Paperclip className="w-4 h-4 mr-2" />
-              Adjuntar
+            <Button variant="outline" size="sm" disabled={isProcessing}>
+              <Paperclip className="w-4 h-4 mr-1" />
+              <span className="text-xs">Adjuntar</span>
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      {/* Chat Area — scrollable */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
         {messages.map((message) => (
           <div
             key={message.id}
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[80%] rounded-xl px-3 py-2 ${
+              className={`max-w-[85%] rounded-xl px-3 py-2 ${
                 message.role === 'user'
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted text-foreground'
               }`}
             >
               <p className="text-sm whitespace-pre-line">{message.content}</p>
+
+              {/* Acciones propuestas */}
+              {message.proposal && message.proposal.actions.length > 0 && (
+                <div className="mt-2 space-y-2">
+                  {message.proposal.actions.map((action, i) => renderActionCard(action, i))}
+                </div>
+              )}
+
+              {/* Resultados de confirmación */}
+              {message.results && message.results.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {message.results.map((r, i) => (
+                    <span key={i}>{renderResultBadge(r)}</span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
 
         {isProcessing && (
           <div className="flex justify-start">
-            <div className="bg-muted rounded-xl px-3 py-2">
-              <p className="text-sm text-muted-foreground">Procesando...</p>
+            <div className="bg-muted rounded-xl px-3 py-2 flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground">Procesando...</span>
             </div>
           </div>
         )}
+
+        <div ref={chatEndRef} />
       </div>
 
-      {/* Cambio Propuesto Card */}
-      {cambioPropuesto && (
-        <div className="p-5 border-t border-border bg-muted/30">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">✨ Cambio propuesto — Borrador listo</span>
-            </div>
-            
-            <div className="bg-card rounded-lg p-4 border">
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center">
-                    <User className="w-4 h-4 text-accent-foreground" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">{cambioPropuesto.profesorNombre}</p>
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Building2 className="w-3.5 h-3.5" />
-                        {cambioPropuesto.ie}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <GraduationCap className="w-3.5 h-3.5" />
-                        {cambioPropuesto.salon}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-4 pt-2 border-t border-border">
-                  <span className="flex items-center gap-2 text-sm">
-                    <Clock className="w-4 h-4 text-primary" />
-                    {format(new Date(cambioPropuesto.fecha), "d 'de' MMMM, yyyy", { locale: es })} • {cambioPropuesto.hora}
-                  </span>
-                  <span className="text-xs px-2 py-1 rounded-full bg-warning/10 text-warning">
-                    Pendiente de confirmar
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <Button onClick={handleDescartarCambio} variant="outline" className="flex-1">
-                Descartar
-              </Button>
-              <Button onClick={handleConfirmarCambio} className="flex-1">
-                Confirmar cambios
-              </Button>
-            </div>
+      {/* Botones de propuesta pendiente */}
+      {pendingProposalId && (
+        <div className="px-4 py-3 border-t border-border bg-muted/30 flex-shrink-0">
+          <div className="flex gap-2">
+            <Button onClick={handleDescartar} variant="outline" size="sm" className="flex-1" disabled={isProcessing}>
+              Descartar
+            </Button>
+            <Button onClick={handleConfirmar} size="sm" className="flex-1" disabled={isProcessing}>
+              {isProcessing ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> Confirmando...</>
+              ) : (
+                'Confirmar cambios'
+              )}
+            </Button>
           </div>
         </div>
       )}
 
       {/* Input */}
-      <div className="p-5 border-t border-border">
-        <div className="flex gap-3">
+      <div className="p-4 border-t border-border flex-shrink-0">
+        <div className="flex gap-2">
           <Input
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Ej: Reprograma a Roberto para 2026-03-21 10:30"
+            placeholder='Ej: "Programa a María para el lunes a las 10:00"'
             onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-            className="flex-1"
+            className="flex-1 text-sm"
+            disabled={isProcessing}
           />
-          <Button onClick={handleSendMessage} disabled={isProcessing}>
+          <Button onClick={handleSendMessage} disabled={isProcessing || !inputValue.trim()} size="sm">
             <Send className="w-4 h-4" />
           </Button>
         </div>

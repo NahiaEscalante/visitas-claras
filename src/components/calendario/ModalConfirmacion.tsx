@@ -16,7 +16,7 @@ export function ModalConfirmacion({ visita, onClose, onConfirmar }: ModalConfirm
   const { toast } = useToast();
   const [enviado, setEnviado] = useState(false);
 
-  const mensaje = `Estimado/a ${visita.profesorNombre}, su visita ha sido programada para el día ${format(new Date(visita.fecha), "d 'de' MMMM 'de' yyyy", { locale: es })} a las ${visita.hora}, en la ${visita.ie} – salón ${visita.salon}. Mensaje enviado a usted y a su director responsable.`;
+  const mensaje = `Estimado/a ${visita.profesorNombre}, su visita ha sido programada para el día ${format(new Date(visita.fecha + 'T12:00:00'), "d 'de' MMMM 'de' yyyy", { locale: es })} a las ${visita.hora}, en la ${visita.ie} – salón ${visita.salon}. Mensaje enviado a usted y a su director responsable.`;
 
   const handleEnviar = () => {
     setEnviado(true);
@@ -78,7 +78,7 @@ export function ModalConfirmacion({ visita, onClose, onConfirmar }: ModalConfirm
             <div className="flex items-center gap-4 pt-2 border-t border-border">
               <span className="flex items-center gap-2 text-sm">
                 <Calendar className="w-4 h-4 text-primary" />
-                {format(new Date(visita.fecha), "d 'de' MMMM, yyyy", { locale: es })}
+                {format(new Date(visita.fecha + 'T12:00:00'), "d 'de' MMMM, yyyy", { locale: es })}
               </span>
               <span className="flex items-center gap-2 text-sm">
                 <Clock className="w-4 h-4 text-primary" />

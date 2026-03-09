@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Upload, FileText, X, Save, ChevronDown, ChevronUp, Sparkles, Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,9 +11,170 @@ import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@tanstack/react-query';
 import { toast as sonnerToast } from 'sonner';
 import { isApiModeEnabled } from '@/api/config';
-import { uploadArchivoObservacion, aiAutocompletarVisita, crearVisita } from '@/api/endpoints';
+import {
+  uploadArchivoObservacion,
+  aiAutocompletarVisita,
+  apiUpdateEvaluacion,
+  apiConfirmarEvaluacion,
+} from '@/api/endpoints';
 import { AIAutocompleteResponse } from '@/api/types';
 import { useApp } from '@/context/AppContext';
+
+/**
+ * Transforma rúbricas del formato API al formato frontend.
+ * La API retorna { id: uuid, rubricaId: "string", nivel, observaciones }
+ * El formulario espera { id: "involucra", nombre: "Involucra activamente...", nivel, observaciones }
+ *
+ * El rubricaId del backend puede variar dependiendo de lo que Gemini genere.
+ * Usamos 4 estrategias de matching para máxima robustez.
+ */
+function transformRubricasAPIToFrontend(
+  rubricasAPI: AIAutocompleteResponse['rubricas']
+): Rubrica[] {
+  // Log para debug — ver qué retorna el backend
+  console.log('[IA] Rúbricas recibidas del backend:', JSON.stringify(rubricasAPI, null, 2));
+
+  // Si no hay rúbricas del backend, retornar templates vacíos
+  if (!rubricasAPI || rubricasAPI.length === 0) {
+    console.warn('[IA] No se recibieron rúbricas del backend');
+    return rubricasTemplate.map((t) => ({
+      id: t.id,
+      nombre: t.nombre,
+      nivel: null,
+      observaciones: '',
+    }));
+  }
+
+  // Keywords para matching fuzzy: template.id → palabras clave
+  const keywordsMap: Record<string, string[]> = {
+    involucra: ['involucra', 'activamente', 'participación', 'participacion'],
+    razonamiento: ['razonamiento', 'creatividad', 'crítico', 'critico', 'pensamiento'],
+    evalua: ['evalúa', 'evalua', 'progreso', 'retroaliment', 'aprendizaje'],
+    respeto: ['respeto', 'proximidad', 'ambiente'],
+    comportamiento: ['comportamiento', 'regula', 'positivamente'],
+  };
+
+  // Track cuáles rúbricas del API ya fueron asignadas
+  const usedApiIndices = new Set<number>();
+
+  /**
+   * Buscar la mejor rúbrica API para un template dado.
+   * Estrategias en orden de prioridad:
+   * 1. Exact match: rubricaId === template.id
+   * 2. Keyword match: rubricaId contiene alguna keyword del template
+   * 3. Name contains: rubricaId contiene palabras del nombre del template
+   */
+  function findBestMatch(template: typeof rubricasTemplate[0]): AIAutocompleteResponse['rubricas'][0] | null {
+    // Estrategia 1: Match exacto por rubricaId
+    for (let i = 0; i < rubricasAPI.length; i++) {
+      if (usedApiIndices.has(i)) continue;
+      if (rubricasAPI[i].rubricaId === template.id) {
+        usedApiIndices.add(i);
+        return rubricasAPI[i];
+      }
+    }
+
+    // Estrategia 2: rubricaId contiene keyword del template
+    const keywords = keywordsMap[template.id] || [template.id];
+    for (let i = 0; i < rubricasAPI.length; i++) {
+      if (usedApiIndices.has(i)) continue;
+      const rid = rubricasAPI[i].rubricaId.toLowerCase();
+      if (keywords.some(kw => rid.includes(kw))) {
+        usedApiIndices.add(i);
+        return rubricasAPI[i];
+      }
+    }
+
+    // Estrategia 3: Buscar por nombre del template en rubricaId o observaciones
+    const templateWords = template.nombre.toLowerCase().split(' ').filter(w => w.length > 4);
+    for (let i = 0; i < rubricasAPI.length; i++) {
+      if (usedApiIndices.has(i)) continue;
+      const rid = rubricasAPI[i].rubricaId.toLowerCase();
+      const obs = rubricasAPI[i].observaciones.toLowerCase();
+      const matchCount = templateWords.filter(w => rid.includes(w) || obs.includes(w)).length;
+      if (matchCount >= 2) {
+        usedApiIndices.add(i);
+        return rubricasAPI[i];
+      }
+    }
+
+    return null;
+  }
+
+  const result = rubricasTemplate.map((template, index) => {
+    const apiRubrica = findBestMatch(template);
+
+    // Estrategia 4: Fallback por índice si no se encontró match
+    const fallback = !apiRubrica && index < rubricasAPI.length && !usedApiIndices.has(index)
+      ? rubricasAPI[index]
+      : null;
+
+    if (fallback) {
+      usedApiIndices.add(index);
+    }
+
+    const matched = apiRubrica || fallback;
+
+    if (matched) {
+      console.log(`[IA] Rúbrica "${template.id}" ← matched con rubricaId="${matched.rubricaId}" (nivel=${matched.nivel})`);
+    } else {
+      console.warn(`[IA] Rúbrica "${template.id}" — SIN MATCH en respuesta API`);
+    }
+
+    return {
+      id: template.id,
+      nombre: template.nombre,
+      nivel: (matched?.nivel as 1 | 2 | 3 | 4 | null) ?? null,
+      observaciones: matched?.observaciones ?? '',
+    };
+  });
+
+  return result;
+}
+
+/**
+ * Normaliza las claves de datosDocente al formato camelCase que espera el formulario.
+ * El backend almacena datosDocente como JSONB libre — Gemini puede generar claves
+ * en snake_case, camelCase, o variantes mixtas. Esta función asegura que siempre
+ * se use el formato correcto.
+ */
+function normalizeDatosDocente(raw: Record<string, any>): DatosDocente {
+  // Log para debug — ver exactamente qué retorna el backend
+  console.log('[IA] datosDocente recibidos del backend:', JSON.stringify(raw, null, 2));
+
+  // Mapa: clave destino (camelCase) → posibles claves fuente
+  const keyMap: Record<keyof DatosDocente, string[]> = {
+    nombreCompleto: ['nombreCompleto', 'nombre_completo', 'nombrecompleto', 'nombre'],
+    dni: ['dni', 'DNI', 'Dni'],
+    cargoLaboral: ['cargoLaboral', 'cargo_laboral', 'cargo'],
+    especialidad: ['especialidad', 'Especialidad'],
+    ie: ['ie', 'IE', 'institucion', 'institucionEducativa', 'institucion_educativa'],
+    nivelEducativo: ['nivelEducativo', 'nivel_educativo', 'nivel'],
+    grado: ['grado', 'Grado'],
+    seccion: ['seccion', 'sección', 'Seccion', 'Sección'],
+    areasCurriculares: ['areasCurriculares', 'areas_curriculares', 'areasC', 'area', 'areas'],
+    fechaVisita: ['fechaVisita', 'fecha_visita', 'fecha'],
+    horaInicio: ['horaInicio', 'hora_inicio', 'hora', 'horaInicial'],
+    horaFin: ['horaFin', 'hora_fin', 'horaFinal'],
+  };
+
+  const result: Record<string, string> = {};
+  for (const [targetKey, sourceKeys] of Object.entries(keyMap)) {
+    let found = false;
+    for (const srcKey of sourceKeys) {
+      if (raw[srcKey] !== undefined && raw[srcKey] !== null) {
+        result[targetKey] = String(raw[srcKey]);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      result[targetKey] = '';
+    }
+  }
+
+  return result as unknown as DatosDocente;
+}
 
 interface FormularioObservacionProps {
   profesor: Profesor;
@@ -32,8 +193,12 @@ const nivelesLogro = [
 
 export function FormularioObservacion({ profesor, onGuardar, onFocusChange }: FormularioObservacionProps) {
   const { toast } = useToast();
-  const { agregarVisita } = useApp();
+  const { agregarVisita, currentUser } = useApp();
   const [modo, setModo] = useState<ModoFormulario>('manual');
+  const [iaSuggestionId, setIaSuggestionId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  // Guardar los IDs de rúbricas originales de la evaluación para el PATCH
+  const evaluacionRubricasRef = useRef<AIAutocompleteResponse['rubricas']>([]);
   const [archivoSubido, setArchivoSubido] = useState<File | null>(null);
   const [archivoId, setArchivoId] = useState<string | null>(null);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
@@ -41,12 +206,12 @@ export function FormularioObservacion({ profesor, onGuardar, onFocusChange }: Fo
     datos: true,
     rubricas: true,
   });
-  const [advertenciasIA, setAdvertenciasIA] = useState<AIAutocompleteResponse['advertencias']>([]);
+  const [advertenciasIA, setAdvertenciasIA] = useState<Array<{ campo: string; mensaje: string; tipo: string }>>([]);
   const [camposBajaConfianza, setCamposBajaConfianza] = useState<Set<string>>(new Set());
   const [observacionGeneralIA, setObservacionGeneralIA] = useState<string | undefined>(undefined);
   const [puntajeTotalIA, setPuntajeTotalIA] = useState<number | undefined>(undefined);
-  const [explicacionesRubricasIA, setExplicacionesRubricasIA] = useState<AIAutocompleteResponse['explicacionesRubricas']>([]);
-  const [sugerenciasMejoraIA, setSugerenciasMejoraIA] = useState<AIAutocompleteResponse['sugerenciasMejora']>([]);
+  const [explicacionesRubricasIA, setExplicacionesRubricasIA] = useState<AIAutocompleteResponse['explicacionesRubricas']>(null);
+  const [sugerenciasMejoraIA, setSugerenciasMejoraIA] = useState<AIAutocompleteResponse['sugerenciasMejora']>(null);
 
   const [datosDocente, setDatosDocente] = useState<DatosDocente>({
     nombreCompleto: `${profesor.nombre} ${profesor.apellido}`,
@@ -100,6 +265,7 @@ export function FormularioObservacion({ profesor, onGuardar, onFocusChange }: Fo
       console.log('Iniciando análisis IA con archivoId:', fileId);
       return aiAutocompletarVisita({
         profesorId: profesor.id,
+        observadorId: currentUser?.id ?? '',
         fecha: datosDocente.fechaVisita,
         hora: datosDocente.horaInicio,
         archivoId: fileId,
@@ -107,28 +273,32 @@ export function FormularioObservacion({ profesor, onGuardar, onFocusChange }: Fo
     },
     onSuccess: (data) => {
       console.log('Análisis IA completado:', data);
-      // Autocompletar formulario con datos de IA
-      setDatosDocente(data.datosDocente);
-      setRubricas(data.rubricas);
-      setAdvertenciasIA(data.advertencias || []);
-      setObservacionGeneralIA(data.observacionGeneral || data.textoEstructurado);
-      setPuntajeTotalIA(data.puntajeTotal);
-      setExplicacionesRubricasIA(data.explicacionesRubricas || []);
-      setSugerenciasMejoraIA(data.sugerenciasMejora || []);
-      
-      // Identificar campos con baja confianza
-      const bajaConfianza = new Set<string>();
-      if (data.confianza) {
-        if (data.confianza.datosDocente < 0.7) {
-          bajaConfianza.add('datosDocente');
-        }
-        Object.entries(data.confianza.rubricas).forEach(([id, conf]) => {
-          if (conf < 0.7) {
-            bajaConfianza.add(`rubrica-${id}`);
-          }
-        });
+
+      // Normalizar datosDocente (puede venir en snake_case desde Gemini)
+      const datosNormalizados = normalizeDatosDocente(data.datosDocente as Record<string, any>);
+      setDatosDocente(datosNormalizados);
+
+      // Transformar rúbricas del formato API al formato frontend
+      const rubricasTransformadas = transformRubricasAPIToFrontend(data.rubricas);
+      setRubricas(rubricasTransformadas);
+
+      // Guardar referencia a las rúbricas originales de la API (con sus UUIDs) para el PATCH
+      evaluacionRubricasRef.current = data.rubricas;
+
+      // Guardar evaluacionId para usarlo como iaSuggestionId al crear visita
+      if (data.evaluacionId) {
+        setIaSuggestionId(data.evaluacionId);
       }
-      setCamposBajaConfianza(bajaConfianza);
+
+      // Estos campos vienen de la API real
+      setObservacionGeneralIA(data.observacionGeneral ?? undefined);
+      setPuntajeTotalIA(data.puntajeTotal ?? undefined);
+      setExplicacionesRubricasIA(data.explicacionesRubricas || null);
+      setSugerenciasMejoraIA(data.sugerenciasMejora || null);
+
+      // Advertencias y confianza solo disponibles en modo mock
+      setAdvertenciasIA([]);
+      setCamposBajaConfianza(new Set<string>());
       
       setMostrarFormulario(true);
       sonnerToast.dismiss('ai');
@@ -147,36 +317,7 @@ export function FormularioObservacion({ profesor, onGuardar, onFocusChange }: Fo
     },
   });
 
-  // Mutación para crear visita
-  const crearVisitaMutation = useMutation({
-    mutationFn: crearVisita,
-    onSuccess: (data) => {
-      // Convertir respuesta de API a formato Visita del contexto
-      const nuevaVisita: Visita = {
-        id: data.id,
-        profesorId: data.profesorId,
-        fecha: data.fecha,
-        hora: data.hora,
-        nivelLogroTotal: data.nivelLogroTotal,
-        rubricas: data.rubricas,
-        datosDocente: data.datosDocente,
-      };
-      
-      agregarVisita(nuevaVisita);
-      resetFormulario();
-      
-      sonnerToast.success('Visita guardada exitosamente');
-      toast({
-        title: 'Visita guardada',
-        description: 'La observación ha sido registrada exitosamente en el historial.',
-      });
-    },
-    onError: (error: Error) => {
-      sonnerToast.error('Error al guardar visita', {
-        description: error.message,
-      });
-    },
-  });
+  // Mutación ya no se necesita — handleGuardar hace PATCH+confirm directamente
 
   const resetFormulario = () => {
     setArchivoSubido(null);
@@ -189,8 +330,11 @@ export function FormularioObservacion({ profesor, onGuardar, onFocusChange }: Fo
     setCamposBajaConfianza(new Set());
     setObservacionGeneralIA(undefined);
     setPuntajeTotalIA(undefined);
-    setExplicacionesRubricasIA([]);
-    setSugerenciasMejoraIA([]);
+    setExplicacionesRubricasIA(null);
+    setSugerenciasMejoraIA(null);
+    setIaSuggestionId(null);
+    setIsSaving(false);
+    evaluacionRubricasRef.current = [];
     setDatosDocente({
       nombreCompleto: `${profesor.nombre} ${profesor.apellido}`,
       dni: '',
@@ -303,24 +447,74 @@ export function FormularioObservacion({ profesor, onGuardar, onFocusChange }: Fo
       return;
     }
 
-    const payload = {
-      profesorId: profesor.id,
-      fecha: datosDocente.fechaVisita,
-      hora: datosDocente.horaInicio,
-      datosDocente,
-      rubricas,
-      ...(archivoId && { archivoId }),
-    };
+    setIsSaving(true);
 
-    // Siempre usar API (mock o real)
     try {
-      await crearVisitaMutation.mutateAsync(payload);
+      if (iaSuggestionId && isApiModeEnabled()) {
+        // ─── Flujo API real: solo PATCH + confirmar evaluación ───
+        // Paso 1: Actualizar la evaluación draft con las ediciones del usuario
+        const rubricasParaPatch = evaluacionRubricasRef.current.map(origRubrica => {
+          const editada = rubricas.find(r => r.id === origRubrica.rubricaId);
+          return {
+            id: origRubrica.id,
+            rubricaId: origRubrica.rubricaId,
+            nivel: editada?.nivel ?? origRubrica.nivel,
+            observaciones: editada?.observaciones ?? origRubrica.observaciones,
+          };
+        });
+
+        await apiUpdateEvaluacion(iaSuggestionId, {
+          observacionGeneral: observacionGeneralIA ?? null,
+          puntajeTotal: puntajeTotalIA ?? null,
+          rubricas: rubricasParaPatch,
+          explicacionesRubricas: explicacionesRubricasIA ?? null,
+          sugerenciasMejora: sugerenciasMejoraIA ?? null,
+        });
+
+        // Paso 2: Confirmar la evaluación (draft → confirmed)
+        await apiConfirmarEvaluacion(iaSuggestionId);
+
+      } else {
+        // ─── Flujo mock: crear visita localmente ───
+        const nuevaVisita: Visita = {
+          id: `visita-${Date.now()}`,
+          profesorId: profesor.id,
+          observadorId: currentUser?.id ?? '',
+          fecha: datosDocente.fechaVisita,
+          hora: datosDocente.horaInicio,
+          nivelLogroTotal: nivelTotal,
+          datosDocente,
+          observacionGeneral: observacionGeneralIA ?? null,
+          archivoId: archivoId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          rubricas: rubricas.map(r => ({
+            id: r.id,
+            rubricaId: r.id,
+            nivel: r.nivel,
+            observaciones: r.observaciones,
+          })),
+        };
+        agregarVisita(nuevaVisita);
+      }
+
+      resetFormulario();
       if (onFocusChange) {
         onFocusChange(false);
       }
+
+      sonnerToast.success('Evaluación guardada exitosamente');
+      toast({
+        title: 'Evaluación guardada',
+        description: 'La observación ha sido registrada exitosamente.',
+      });
     } catch (error) {
-      // Error ya manejado en la mutación
-      return;
+      console.error('Error en flujo guardar:', error);
+      sonnerToast.error('Error al guardar', {
+        description: error instanceof Error ? error.message : 'Error desconocido',
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -333,7 +527,7 @@ export function FormularioObservacion({ profesor, onGuardar, onFocusChange }: Fo
 
   // Siempre habilitar modo IA (usa mock API)
   const isApiMode = true; // Siempre activo porque usamos mock API
-  const isLoading = uploadMutation.isPending || aiMutation.isPending || crearVisitaMutation.isPending;
+  const isLoading = uploadMutation.isPending || aiMutation.isPending || isSaving;
 
   return (
     <div className="space-y-6">

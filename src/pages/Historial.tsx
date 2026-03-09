@@ -19,7 +19,7 @@ export default function Historial() {
 
   // Sort by date descending
   const visitasOrdenadas = [...visitas].sort(
-    (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+    (a, b) => new Date(b.fecha + 'T12:00:00').getTime() - new Date(a.fecha + 'T12:00:00').getTime()
   );
 
   return (
@@ -91,7 +91,7 @@ export default function Historial() {
                       <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5" />
-                          {format(new Date(visita.fecha), "d 'de' MMMM, yyyy", { locale: es })}
+                          {format(new Date(visita.fecha + 'T12:00:00'), "d 'de' MMMM, yyyy", { locale: es })}
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5" />

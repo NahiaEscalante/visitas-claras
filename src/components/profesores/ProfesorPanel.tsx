@@ -12,8 +12,7 @@ interface ProfesorPanelProps {
 }
 
 export function ProfesorPanel({ profesor, onBack }: ProfesorPanelProps) {
-  const { getVisitasByProfesor, agregarVisita } = useApp();
-  const visitas = getVisitasByProfesor(profesor.id);
+  const { agregarVisita } = useApp();
   const [enFocoObservacion, setEnFocoObservacion] = useState(false);
 
   return (
@@ -49,10 +48,6 @@ export function ProfesorPanel({ profesor, onBack }: ProfesorPanelProps) {
                 <GraduationCap className="w-4 h-4" />
                 {profesor.salon}
               </span>
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <User className="w-4 h-4" />
-                {visitas.length} visita{visitas.length !== 1 ? 's' : ''} registrada{visitas.length !== 1 ? 's' : ''}
-              </span>
             </div>
           </div>
         </div>
@@ -64,9 +59,9 @@ export function ProfesorPanel({ profesor, onBack }: ProfesorPanelProps) {
           {/* Left: History */}
           <div className="min-h-[320px] max-h-[70vh] overflow-y-auto pr-1">
             <h3 className="font-semibold text-lg text-foreground mb-4">
-              Historial de visitas
+              Historial de evaluaciones
             </h3>
-            <HistorialVisitas visitas={visitas} />
+            <HistorialVisitas profesorId={profesor.id} />
           </div>
 
           {/* Right: Add Visit Button */}
